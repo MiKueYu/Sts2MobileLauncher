@@ -101,11 +101,16 @@ jobs:
 
       - name: Fetch original v0.113.1 compile-gate references
         run: |
+          # 编译门引用优先从 repository secret 提供的 base64 归档还原：
+          #   secrets.ORIG_V1131_TAR_GZ = base64(tar.gz 包含 sts2.dll/GodotSharp.dll/0Harmony.dll)
+          # 未配置时 CI 降级为 offline bootstrap 版发布（full compat 缺席会在 Release 说明标注）。
           mkdir -p .build-refs/orig-v1131
-          # 编译门引用来自上游官方发布 APK 内的 payload 不现实；改为复刻项目文档 §2 的来源：
-          # 从 Steam DLC 不可行，CI 使用随仓库同源的公开参考：官方发布 APK assets 里的 sts2.dll 不能用于编译门。
-          # 项目接受任意含 sts2.dll/GodotSharp.dll/0Harmony.dll 的 v0.113.1 目录；CI 用 self-hosted 缓存或 secrets 提供。
-          echo "STS2_ORIGINAL_V1130_REFERENCE_DIR is provided by repository variable/secret or cache" >&2
+          if [ -n "${{ secrets.ORIG_V1131_TAR_GZ }}" ]; then
+            echo "${{ secrets.ORIG_V1131_TAR_GZ }}" | base64 -d | tar xz -C .build-refs/orig-v1131
+            ls -la .build-refs/orig-v1131
+          else
+            echo "::notice::ORIG_V1131_TAR_GZ secret not set; building without full compat pack."
+          fi
 
       - name: Restore original reference cache
         uses: actions/cache@v4
@@ -116,7 +121,7 @@ jobs:
       - name: Populate original references (from cache or skip gate)
         run: |
           if [ ! -f .build-refs/orig-v1131/sts2.dll ]; then
-            echo "::warning::No cached sts2.dll compile gate; full compat pack will be skipped."
+            echo "::warning::No sts2.dll compile gate; full compat pack will be skipped."
             echo "SKIP_FULL_COMPAT=1" >> "$GITHUB_ENV"
           fi
 
@@ -126,7 +131,7 @@ jobs:
       - name: Build compat artifacts
         run: |
           if [ "${SKIP_FULL_COMPAT:-0}" = "1" ]; then
-            # 无编译门时退回 fallback：build-port-mod 需要 v1130 引用；同样跳过，直接用 offline bootstrap
+            # 无编译门时退回 fallback：offline bootstrap 兜底包（发布说明会标注无 full compat）
             bash offline-bootstrap/tools/build-offline-pack.sh
             mkdir -p android/assets/compat_packs
             cp offline-bootstrap/dist/offline-bootstrap/*.zip android/assets/compat_packs/
