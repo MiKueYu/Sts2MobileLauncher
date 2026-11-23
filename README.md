@@ -34,7 +34,7 @@
 
 ## About the Project
 
-This project is an experimental, unofficial Android port and launcher framework for *Slay the Spire 2*. It **DOES NOT** contain any base game files. Instead, it provides an Android shell that allows players to import and run their legally owned PC game files on mobile devices, featuring support for Mod loading, Steam Workshop browsing/direct ID or URL opening/download tracking with anonymous public browsing and WorkshopOnAndroid-compatible access fallback, local save snapshots, Steam Cloud and WebDAV save synchronization, and launcher update checks from the About page. When an update is found, the launcher can open either the GitHub release page or the Bilibili dynamic feed.
+This project is an experimental, unofficial Android port and launcher framework for *Slay the Spire 2*. It **DOES NOT** contain any base game files. Instead, it provides an Android shell that allows players to import and run their legally owned PC game files on mobile devices, featuring support for Mod loading, Steam Workshop browsing/direct ID or URL opening/Workshop collection batch downloading/download tracking with anonymous public browsing and WorkshopOnAndroid-compatible access fallback, local save snapshots, Steam Cloud and WebDAV save synchronization, and launcher update checks from the About page. When an update is found, the launcher can open either the GitHub release page or the Bilibili dynamic feed.
 
 The launcher follows Android’s language setting. Traditional Chinese is shared across Taiwan, Hong Kong and Macao; this does not change the language of the imported game.
 

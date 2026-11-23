@@ -100,6 +100,7 @@ public class SteamWorkshopActivity extends AppCompatActivity {
 
 	private ExtraSettingsRepository repository;
 	private SteamWorkshopCatalog catalog;
+	private SteamWorkshopCollections collections;
 	private SteamWorkshopLibrary library;
 	private WorkshopImageLoader imageLoader;
 	private FrameLayout screenHost;
@@ -173,6 +174,7 @@ public class SteamWorkshopActivity extends AppCompatActivity {
 
 	private void openWorkshop() {
 		catalog = new SteamWorkshopCatalog(this);
+		collections = new SteamWorkshopCollections(this, catalog);
 		library = new SteamWorkshopLibrary(this);
 		SteamWorkshopDownloadCleaner.maybeRunDailyCleanup(this);
 		imageLoader = new WorkshopImageLoader(this);
@@ -646,6 +648,10 @@ public class SteamWorkshopActivity extends AppCompatActivity {
 			toggleDrawer(false);
 			showOpenByIdDialog();
 		}));
+		drawerContent.addView(drawerItem(R.drawable.ic_groups_24, R.string.workshop_collection_import, false, () -> {
+			toggleDrawer(false);
+			showCollectionDownloadDialog();
+		}));
 	}
 
 	private void showSearchDialog() {
@@ -690,6 +696,248 @@ public class SteamWorkshopActivity extends AppCompatActivity {
 			return;
 		}
 		searchWorkshop(query, 1);
+	}
+
+	private void showCollectionDownloadDialog() {
+		TextInputLayout inputLayout = new TextInputLayout(this);
+		inputLayout.setHint(getString(R.string.workshop_collection_input_hint));
+		inputLayout.setStartIconDrawable(MaterialSymbols.drawable(this, R.drawable.ic_groups_24, ExtraSettingsUi.COLOR_ON_SURFACE_VARIANT, 24));
+		inputLayout.setBoxBackgroundColor(ExtraSettingsUi.COLOR_SURFACE);
+		TextInputEditText input = new TextInputEditText(inputLayout.getContext());
+		input.setSingleLine(true);
+		input.setImeOptions(EditorInfo.IME_ACTION_GO);
+		input.setInputType(InputType.TYPE_CLASS_TEXT | InputType.TYPE_TEXT_VARIATION_URI);
+		input.setTextColor(ExtraSettingsUi.COLOR_ON_SURFACE);
+		input.setHintTextColor(ExtraSettingsUi.COLOR_MUTED);
+		inputLayout.addView(input);
+		MaterialAlertDialogBuilder builder = ExtraSettingsUi.scrollableDialog(this, getString(R.string.workshop_collection_dialog_message), inputLayout)
+			.setTitle(R.string.workshop_collection_import)
+			.setNegativeButton(android.R.string.cancel, null)
+			.setPositiveButton(R.string.workshop_collection_load, null);
+		final androidx.appcompat.app.AlertDialog dialog = builder.create();
+		input.setOnEditorActionListener((v, actionId, event) -> {
+			if (actionId == EditorInfo.IME_ACTION_GO) {
+				return submitCollectionDialog(inputLayout, input, dialog);
+			}
+			return false;
+		});
+		dialog.setOnShowListener(shown -> dialog.getButton(android.content.DialogInterface.BUTTON_POSITIVE).setOnClickListener(v -> submitCollectionDialog(inputLayout, input, dialog)));
+		dialog.show();
+	}
+
+	private boolean submitCollectionDialog(TextInputLayout inputLayout, TextInputEditText input, androidx.appcompat.app.AlertDialog dialog) {
+		String value = input == null || input.getText() == null ? "" : input.getText().toString();
+		String collectionId = parseWorkshopPublishedFileId(value);
+		if (TextUtils.isEmpty(collectionId)) {
+			inputLayout.setError(getString(R.string.workshop_collection_invalid));
+			return true;
+		}
+		inputLayout.setError(null);
+		dialog.dismiss();
+		loadCollectionForDownload(collectionId);
+		return true;
+	}
+
+	private void loadCollectionForDownload(String collectionId) {
+		if (busy || isUiUnavailable() || collections == null) {
+			showMessage(getString(R.string.workshop_operation_busy));
+			return;
+		}
+		requestLibraryRefresh();
+		runOperation(
+			getString(R.string.workshop_collection_loading),
+			() -> collections.loadCollection(collectionId),
+			this::showCollectionSelectionDialog,
+			this::showError
+		);
+	}
+
+	private void showCollectionSelectionDialog(SteamWorkshopCollections.Collection collection) {
+		List<SteamWorkshopCatalog.Item> items = collection.getChildren();
+		if (items.isEmpty()) {
+			showMessage(getString(R.string.workshop_collection_empty));
+			return;
+		}
+		LinearLayout content = ExtraSettingsUi.vertical(this);
+		content.setPadding(ExtraSettingsUi.dp(this, 4), ExtraSettingsUi.dp(this, 8), ExtraSettingsUi.dp(this, 4), 0);
+		content.addView(ExtraSettingsUi.body(this, getString(R.string.workshop_collection_summary, collection.getTitle(), items.size())));
+		content.addView(ExtraSettingsUi.caption(this, getString(R.string.workshop_collection_branch_label, workshopDownloadBranchSettingLabel())), fullWidthTopMargin(4));
+		Map<String, SteamWorkshopLibrary.Entry> entriesById = new LinkedHashMap<>();
+		for (SteamWorkshopLibrary.Entry entry : librarySnapshot.entries) {
+			entriesById.putIfAbsent(entry.publishedFileId, entry);
+		}
+		List<CheckBox> checkboxes = new ArrayList<>();
+		int selectableCount = 0;
+		for (SteamWorkshopCatalog.Item item : items) {
+			SteamWorkshopLibrary.Entry entry = entriesById.get(item.getPublishedFileId());
+			boolean installed = entry != null && !librarySnapshot.installedMods(entry).isEmpty();
+			LinearLayout row = ExtraSettingsUi.horizontal(this);
+			row.setGravity(Gravity.CENTER_VERTICAL);
+			row.setPadding(ExtraSettingsUi.dp(this, 8), ExtraSettingsUi.dp(this, 8), ExtraSettingsUi.dp(this, 8), ExtraSettingsUi.dp(this, 8));
+			GradientDrawable background = new GradientDrawable();
+			background.setColor(ExtraSettingsUi.COLOR_SURFACE_VARIANT);
+			background.setCornerRadius(ExtraSettingsUi.dp(this, 12));
+			row.setBackground(background);
+			ImageView thumb = imageView(40, 40, 8);
+			imageLoader.load(item.getPreviewUrl(), thumb);
+			row.addView(thumb);
+			LinearLayout texts = ExtraSettingsUi.vertical(this);
+			LinearLayout.LayoutParams textParams = new LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.WRAP_CONTENT, 1f);
+			textParams.setMarginStart(ExtraSettingsUi.dp(this, 12));
+			row.addView(texts, textParams);
+			TextView title = ExtraSettingsUi.text(this, item.getTitle(), 14, ExtraSettingsUi.COLOR_ON_SURFACE, Typeface.BOLD);
+			title.setMaxLines(2);
+			title.setEllipsize(TextUtils.TruncateAt.END);
+			texts.addView(title);
+			texts.addView(ExtraSettingsUi.caption(this, installed
+				? getString(R.string.workshop_collection_item_installed)
+				: "#" + item.getPublishedFileId()), fullWidthTopMargin(2));
+			CheckBox checkbox = new CheckBox(this);
+			checkbox.setChecked(!installed);
+			checkbox.setEnabled(!installed);
+			checkbox.setContentDescription(item.getTitle());
+			row.addView(checkbox, compactIconButtonParams());
+			row.setOnClickListener(v -> {
+				if (checkbox.isEnabled()) {
+					checkbox.toggle();
+				}
+			});
+			checkbox.setTag(item);
+			content.addView(row, fullWidthTopMargin(8));
+			if (!installed) {
+				selectableCount++;
+			}
+			checkboxes.add(checkbox);
+		}
+		if (selectableCount == 0) {
+			showMessage(getString(R.string.workshop_collection_all_installed));
+			return;
+		}
+		ScrollView scrollView = new ScrollView(this);
+		scrollView.addView(content, new ScrollView.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT));
+		new MaterialAlertDialogBuilder(this)
+			.setTitle(R.string.workshop_collection_import)
+			.setView(scrollView)
+			.setNegativeButton(android.R.string.cancel, null)
+			.setPositiveButton(R.string.workshop_collection_download_selected, (dialog, which) ->
+				queueCollectionDownloads(collectSelectedCollectionItems(checkboxes)))
+			.show();
+	}
+
+	private List<SteamWorkshopCatalog.Item> collectSelectedCollectionItems(List<CheckBox> checkboxes) {
+		List<SteamWorkshopCatalog.Item> selected = new ArrayList<>();
+		for (CheckBox checkbox : checkboxes) {
+			if (checkbox.isEnabled() && checkbox.isChecked() && checkbox.getTag() instanceof SteamWorkshopCatalog.Item) {
+				selected.add((SteamWorkshopCatalog.Item) checkbox.getTag());
+			}
+		}
+		return selected;
+	}
+
+	private void queueCollectionDownloads(List<SteamWorkshopCatalog.Item> items) {
+		if (items.isEmpty()) {
+			showMessage(getString(R.string.workshop_collection_none_selected));
+			return;
+		}
+		String branch = resolvePreferredWorkshopDownloadBranch();
+		if (TextUtils.isEmpty(branch)) {
+			// Ask once for the whole collection instead of prompting per item while the queue pumps.
+			promptCollectionBranchSelection(items);
+			return;
+		}
+		queueCollectionDownloadsWithBranch(items, branch);
+	}
+
+	private void promptCollectionBranchSelection(List<SteamWorkshopCatalog.Item> items) {
+		LinearLayout content = ExtraSettingsUi.vertical(this);
+		content.setPadding(ExtraSettingsUi.dp(this, 4), ExtraSettingsUi.dp(this, 8), ExtraSettingsUi.dp(this, 4), 0);
+		content.addView(ExtraSettingsUi.body(this, getString(R.string.workshop_collection_branch_prompt_message)));
+		final androidx.appcompat.app.AlertDialog[] dialogRef = new androidx.appcompat.app.AlertDialog[1];
+		String[] branches = new String[] {
+			SteamWorkshopPreferences.BRANCH_MODE_PUBLIC,
+			SteamWorkshopPreferences.BRANCH_MODE_PUBLIC_BETA
+		};
+		for (String branch : branches) {
+			View row = drawerTextOption(R.drawable.ic_steam_24, branch, false, () -> {
+				if (dialogRef[0] != null) dialogRef[0].dismiss();
+				queueCollectionDownloadsWithBranch(items, branch);
+			});
+			content.addView(row, fullWidthTopMargin(8));
+		}
+		View customRow = drawerTextOption(R.drawable.ic_edit_24, getString(R.string.workshop_collection_branch_custom), false, () -> {
+			if (dialogRef[0] != null) dialogRef[0].dismiss();
+			showCollectionCustomBranchDialog(items);
+		});
+		content.addView(customRow, fullWidthTopMargin(8));
+		ScrollView scrollView = new ScrollView(this);
+		scrollView.addView(content, new ScrollView.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT));
+		dialogRef[0] = new MaterialAlertDialogBuilder(this)
+			.setTitle(R.string.workshop_collection_branch_prompt_title)
+			.setView(scrollView)
+			.setNegativeButton(android.R.string.cancel, null)
+			.show();
+	}
+
+	private void showCollectionCustomBranchDialog(List<SteamWorkshopCatalog.Item> items) {
+		TextInputLayout inputLayout = new TextInputLayout(this);
+		inputLayout.setHint(getString(R.string.workshop_download_branch_custom_hint));
+		inputLayout.setStartIconDrawable(MaterialSymbols.drawable(this, R.drawable.ic_edit_24, ExtraSettingsUi.COLOR_ON_SURFACE_VARIANT, 24));
+		inputLayout.setBoxBackgroundColor(ExtraSettingsUi.COLOR_SURFACE);
+		TextInputEditText input = new TextInputEditText(inputLayout.getContext());
+		input.setSingleLine(true);
+		input.setImeOptions(EditorInfo.IME_ACTION_GO);
+		input.setInputType(InputType.TYPE_CLASS_TEXT);
+		input.setTextColor(ExtraSettingsUi.COLOR_ON_SURFACE);
+		input.setHintTextColor(ExtraSettingsUi.COLOR_MUTED);
+		inputLayout.addView(input);
+		MaterialAlertDialogBuilder builder = ExtraSettingsUi.scrollableDialog(this, inputLayout)
+			.setTitle(R.string.workshop_collection_branch_custom)
+			.setNegativeButton(android.R.string.cancel, null)
+			.setPositiveButton(R.string.workshop_collection_download_selected, null);
+		final androidx.appcompat.app.AlertDialog dialog = builder.create();
+		input.setOnEditorActionListener((v, actionId, event) -> {
+			if (actionId == EditorInfo.IME_ACTION_GO) {
+				return submitCollectionCustomBranch(inputLayout, input, dialog, items);
+			}
+			return false;
+		});
+		dialog.setOnShowListener(shown -> dialog.getButton(android.content.DialogInterface.BUTTON_POSITIVE).setOnClickListener(v ->
+			submitCollectionCustomBranch(inputLayout, input, dialog, items)));
+		dialog.show();
+	}
+
+	private boolean submitCollectionCustomBranch(TextInputLayout inputLayout, TextInputEditText input, androidx.appcompat.app.AlertDialog dialog, List<SteamWorkshopCatalog.Item> items) {
+		String value = input == null || input.getText() == null ? "" : input.getText().toString();
+		String branch = sanitizeWorkshopBranch(value);
+		if (TextUtils.isEmpty(branch)) {
+			inputLayout.setError(getString(R.string.workshop_collection_branch_custom_invalid));
+			return true;
+		}
+		inputLayout.setError(null);
+		dialog.dismiss();
+		queueCollectionDownloadsWithBranch(items, branch);
+		return true;
+	}
+
+	private void queueCollectionDownloadsWithBranch(List<SteamWorkshopCatalog.Item> items, String branch) {
+		SteamWorkshopDownloader.BranchOption sharedOption = fixedWorkshopBranchOption(branch,
+			SteamWorkshopPreferences.isSupplyStationEnabled(this));
+		int queued = 0;
+		for (SteamWorkshopCatalog.Item item : items) {
+			if (isDownloadRequested(new PendingDownload(item, sharedOption, false))) {
+				continue;
+			}
+			pendingDownloadQueue.add(new PendingDownload(item, sharedOption, false));
+			ensurePendingDownloadTask(item, getString(R.string.workshop_status_downloading));
+			queued++;
+		}
+		if (queued == 0) {
+			showMessage(getString(R.string.workshop_collection_none_selected));
+			return;
+		}
+		String branchLabel = TextUtils.isEmpty(branch) ? getString(R.string.workshop_download_branch_ask_short) : branch;
+		showMessage(getString(R.string.workshop_collection_queue_started, queued, branchLabel, pendingDownloadQueue.size()));
+		startNextQueuedDownload();
 	}
 
 	private void showOpenByIdDialog() {
