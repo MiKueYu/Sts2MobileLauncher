@@ -1,0 +1,71 @@
+name: Release from tag (prebuilt APK)
+
+# 服务器构建完成后 push tag 触发本工作流：
+# 把 tag 上附带的预构建 APK 元信息写入 GitHub Release，并将 APK 作为附件上传。
+# APK 本体通过 Actions artifact 回传：服务器在 tag message 中给出路径，本工作流
+# 不能直接访问服务器；因此采用双方案：
+#   A) 服务器同时把 APK push 到 fork 的 release-assets 分支（LFS 不需要，直接 blob）
+#   B) 本工作流从 release-assets 分支取 APK 创建 Release
+# 这样发布完全自动化且 runner 不需要构建环境。
+
+on:
+  push:
+    tags:
+      - 'v*'
+
+permissions:
+  contents: write
+
+jobs:
+  release:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - name: Checkout fork
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Resolve APK from release-assets branch
+        id: apk
+        run: |
+          TAG="${GITHUB_REF_NAME}"
+          if git fetch origin "release-assets:$T" 2>/dev/null; then :; fi
+          git fetch origin release-assets --depth=1 || true
+          if git rev-parse --verify -q "FETCH_HEAD" >/dev/null && git cat-file -e "FETCH_HEAD:$TAG/sts2-re-importer-$TAG.apk" 2>/dev/null; then
+            git show "FETCH_HEAD:$TAG/sts2-re-importer-$TAG.apk" > "sts2-re-importer-$TAG.apk"
+            echo "file=sts2-re-importer-$TAG.apk" >> "$GITHUB_OUTPUT"
+            echo "found=branch" >> "$GITHUB_OUTPUT"
+          else
+            echo "found=missing" >> "$GITHUB_OUTPUT"
+            echo "::warning::APK not found on release-assets branch for $TAG"
+          fi
+
+      - name: Generate release notes
+        id: notes
+        run: |
+          {
+            echo "## Automated build ${GITHUB_REF_NAME}"
+            echo ""
+            echo "- APK SHA-256: see asset checksum file"
+            echo "- Built by aly server pipeline; signed with local debug keystore (v1+v2+v3)"
+            echo ""
+            echo "### Commits in this build"
+            echo ""
+            git log --oneline -15 || true
+          } > release-notes.md
+          cat release-notes.md
+
+      - name: Create Release
+        uses: softprops/action-gh-release@v2
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        with:
+          tag_name: ${{ github.ref_name }}
+          name: ${{ github.ref_name }}
+          body_path: release-notes.md
+          draft: false
+          prerelease: false
+          files: |
+            sts2-re-importer-*.apk
+          fail_on_unmatched_files: false
