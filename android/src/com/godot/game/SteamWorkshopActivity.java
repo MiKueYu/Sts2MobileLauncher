@@ -977,7 +977,6 @@ public class SteamWorkshopActivity extends AppCompatActivity {
 		}
 		requestLibraryRefresh();
 		runOperation(
-			getString(R.string.workshop_collection_loading),
 			() -> collections.loadCollection(collectionId),
 			this::showCollectionSelectionDialog,
 			this::showError
@@ -1169,7 +1168,7 @@ public class SteamWorkshopActivity extends AppCompatActivity {
 		}
 		String branchLabel = TextUtils.isEmpty(branch) ? getString(R.string.workshop_download_branch_ask_short) : branch;
 		showMessage(getString(R.string.workshop_collection_queue_started, queued, branchLabel, pendingDownloadQueue.size()));
-		startNextQueuedDownload();
+		pumpDownloadQueue();
 	}
 
 	private void showOpenByIdDialog() {
