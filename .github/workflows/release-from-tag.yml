@@ -22,6 +22,7 @@ jobs:
         uses: actions/checkout@v4
         with:
           fetch-depth: 0
+          fetch-tags: true
 
       - name: Resolve APK from release-assets branch
         id: apk
@@ -36,10 +37,15 @@ jobs:
           fi
 
       - name: Generate Chinese release notes
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
           TAG="${GITHUB_REF_NAME}"
-          # tag message 正文（签名块之前）= 中文更新介绍；"----" 单独行之后为机器元数据
-          TAG_MSG="$(git tag -l "$TAG" --format='%(contents)')"
+          # 从 API 取 annotated tag message（checkout 不保证带 tag refs）
+          TAG_MSG="$(gh api "repos/${{ github.repository }}/git/tags/$(git rev-parse refs/tags/$TAG^{tag})" --jq '.message' 2>/dev/null || true)"
+          echo '--- tag message ---'
+          printf '%s\n' "$TAG_MSG"
+          # 正文（签名块之前）= 中文更新介绍；"----" 单独行之后为机器元数据
           INTRO="$(printf '%s' "$TAG_MSG" | sed '/^-----BEGIN PGP SIGNATURE/q')"
           INTRO="$(printf '%s' "$INTRO" | sed '/^----[[:space:]]*$/q' | sed '/^----[[:space:]]*$/d')"
           {
