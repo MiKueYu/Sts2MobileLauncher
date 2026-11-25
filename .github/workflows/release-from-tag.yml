@@ -1,9 +1,8 @@
 name: Release from tag (prebuilt APK)
 
-# 服务器（aly）构建完成后 push tag 触发本工作流：
-# 从 release-assets 分支取预构建 APK，生成中文更新说明并创建 GitHub Release。
-# 服务器在 tag message 里写中文更新介绍（多行，以单独一行 ---- 结束标记），
-# 本工作流读取 tag message 作为 Release 正文主体；没有介绍时回退为提交列表。
+# aly 服务器构建完成后 push tag 触发本工作流：
+# 从 release-assets 分支取预构建 APK，读取 annotated tag message 中的中文更新介绍
+# （以单独一行 ---- 结束），生成 Release 正文并发布。
 
 on:
   push:
@@ -37,15 +36,9 @@ jobs:
           fi
 
       - name: Generate Chinese release notes
-        env:
-          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
           TAG="${GITHUB_REF_NAME}"
-          # 从 API 取 annotated tag message（checkout 不保证带 tag refs）
-          TAG_MSG="$(gh api "repos/${{ github.repository }}/git/tags/$(git rev-parse refs/tags/$TAG^{tag})" --jq '.message' 2>/dev/null || true)"
-          echo '--- tag message ---'
-          printf '%s\n' "$TAG_MSG"
-          # 正文（签名块之前）= 中文更新介绍；"----" 单独行之后为机器元数据
+          TAG_MSG="$(git tag -l "$TAG" --format='%(contents)' 2>/dev/null || true)"
           INTRO="$(printf '%s' "$TAG_MSG" | sed '/^-----BEGIN PGP SIGNATURE/q')"
           INTRO="$(printf '%s' "$INTRO" | sed '/^----[[:space:]]*$/q' | sed '/^----[[:space:]]*$/d')"
           {
