@@ -18,7 +18,7 @@ STS2_LOCAL_CONFIG_FILE="${STS2_LOCAL_CONFIG_FILE:-$STS2_RE_ROOT/local.properties
 _sts2_path_abs() {
   local input="$1"
   [[ -n "$input" ]] || return 0
-  python3 - "$STS2_RE_ROOT" "$input" <<'PY'
+  python3 - "$STS2_RE_ROOT" "$input" "${2:-}" <<'PY'
 from pathlib import Path
 import os
 import sys
@@ -27,7 +27,8 @@ value = os.path.expandvars(os.path.expanduser(sys.argv[2]))
 path = Path(value)
 if not path.is_absolute():
     path = root / path
-print(path.resolve(strict=False))
+# Signing policy must see the original paths, including symlinks out of the repo.
+print(path if sys.argv[3] == "preserve-symlinks" else path.resolve(strict=False))
 PY
 }
 
@@ -50,10 +51,21 @@ sts2_load_dotenv() {
     return 0
   fi
   if [[ -f "$STS2_ENV_FILE" ]]; then
+    # A one-off invocation must win over saved bundling preferences in .env.
+    local name override
+    local -a bundled_release_overrides=()
+    for name in COMPAT_PACK_BUILD_MODE COMPAT_BUNDLED_RELEASE_TAG COMPAT_BUNDLED_RELEASE_DIR; do
+      if [[ -n "${!name:-}" ]]; then
+        bundled_release_overrides+=("$name=${!name}")
+      fi
+    done
     set -a
     # shellcheck disable=SC1090
     source "$STS2_ENV_FILE"
     set +a
+    for override in "${bundled_release_overrides[@]}"; do
+      export "$override"
+    done
   elif [[ "${STS2_REQUIRE_DOTENV:-0}" == "1" ]]; then
     echo "Missing $STS2_ENV_FILE. Copy .env.example to .env and edit local paths." >&2
     return 1
@@ -106,6 +118,8 @@ sts2_load_dotenv() {
     STS2_ORIGINAL_V1110_REFERENCE_DIR \
     STS2_ORIGINAL_V1130_ROOT \
     STS2_ORIGINAL_V1130_REFERENCE_DIR \
+    STS2_ORIGINAL_V1140_ROOT \
+    STS2_ORIGINAL_V1140_REFERENCE_DIR \
     STS2_PAYLOAD_ZIP; do
     _sts2_resolve_env_path_var "$var"
   done
@@ -145,6 +159,10 @@ sts2_load_dotenv() {
   if [[ -n "${STS2_ORIGINAL_V1130_ROOT:-}" ]]; then
     export STS2_ORIGINAL_V1130_REFERENCE_DIR="${STS2_ORIGINAL_V1130_REFERENCE_DIR:-$STS2_ORIGINAL_V1130_ROOT/.godot/mono/temp/bin/Debug}"
     _sts2_resolve_env_path_var STS2_ORIGINAL_V1130_REFERENCE_DIR
+  fi
+  if [[ -n "${STS2_ORIGINAL_V1140_ROOT:-}" ]]; then
+    export STS2_ORIGINAL_V1140_REFERENCE_DIR="${STS2_ORIGINAL_V1140_REFERENCE_DIR:-$STS2_ORIGINAL_V1140_ROOT/.godot/mono/temp/bin/Debug}"
+    _sts2_resolve_env_path_var STS2_ORIGINAL_V1140_REFERENCE_DIR
   fi
 
   STS2_DOTENV_LOADED=1
@@ -231,6 +249,16 @@ sts2_config_path() {
   _sts2_path_abs "$value"
 }
 
+sts2_compat_release_signing_key_file() {
+  local value
+  value="$(sts2_config_value COMPAT_RELEASE_SIGNING_KEY_FILE compat.release_signing_key_file)" || return 1
+  _sts2_path_abs "$value" preserve-symlinks
+}
+
+sts2_compat_release_signing_key_id() {
+  sts2_config_value COMPAT_RELEASE_SIGNING_KEY_ID compat.release_signing_key_id sts2-compat-release-v1
+}
+
 sts2_require_file() {
   local path="$1"
   local label="${2:-file}"
@@ -300,6 +328,9 @@ sts2_compat_reference_dir_for_flavor() {
       ;;
     original-v0.113.0)
       printf '%s\n' "${STS2_ORIGINAL_V1130_REFERENCE_DIR:-}"
+      ;;
+    original-v0.114.0)
+      printf '%s\n' "${STS2_ORIGINAL_V1140_REFERENCE_DIR:-}"
       ;;
     runtime|*)
       printf '%s\n' "${STS2_RUNTIME_REFERENCE_DIR:-}"

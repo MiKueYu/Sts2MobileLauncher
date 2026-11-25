@@ -1,13 +1,13 @@
 # AGENTS.md
 
 面向后续编码代理/维护者的项目速览与操作约定。当前目录为本仓库根目录。
-最后同步：2026-11-17。
+最后同步：2026-11-25。
 
 ## 0. 总原则
 
 - 本工程是 **Slay the Spire 2 Android 重构移植/启动器工程**，不是完整游戏源码仓库。
 - 仓库只维护 Android shell、导入/版本管理逻辑、兼容包构建脚本、Android 兼容补丁源码与通用离线启动层源码；**不提交用户游戏 zip、解压后的完整游戏 payload、大型 Godot/Mono runtime、keystore**。
-- `port-mod/` 是独立仓库 <https://github.com/ModinMobileSTS/sts2-android-compat> 的 **git submodule**。当前开发默认使用 flat matrix 模式：一个 checkout 读取 `port-mod/targets/active/*/target.json`，为多个目标版本构建 schema 2 family full compat 包；按游戏版本分支构建的 legacy 模式只作为显式回退/诊断路径保留。
+- `port-mod/` 是独立仓库 <https://github.com/ModinMobileSTS/sts2-android-compat> 的 **git submodule**。发行 APK 默认验签后原样内置固定 tag 的官方 schema 2 full family ZIP；本地开发用 `COMPAT_PACK_BUILD_MODE=matrix`，从一个 checkout 的 `port-mod/targets/active/*/target.json` 编译多目标；`legacy` 多分支模式只作显式回退诊断。
 - `offline-bootstrap/` 是独立边界的通用离线启动层目录：不读取 `port-mod/targets`、不接受 `ReferenceFlavor`、不静态引用 `sts2.dll`、不含 `STS2_TARGET_*` 分支；它输出 schema 2 `sts2-android-offline-bootstrap.zip`，仅在没有已安装 full compat 包按 payload SHA/version 命中时自动作为最低优先级 fallback。wildcard 不是未来版本兼容认证：运行时按 API 形状解析已知合约，未知语义 fail closed；probe v2 只有真实 ModelDb two-phase 完成后才标记 `ready`，已知终态失败的相同 pack id/target/compat version/source zip SHA/payload SHA tuple 不再自动匹配。
 - 新增或修改功能时必须同步文档：用户可见/长期维护说明优先更新 `README.md` / `doc/`；变更流水/changelog 只写入 `.agent/agent-docs/changelog/`（不提交），因为它主要服务 agent 接力，不作为公开仓库文档。历史 `docs/` 已移到 `.agent/historical-backup/docs/` 本地备份，不再作为公开文档入口。`AGENTS.md` 是 agent/维护者专用操作约定；本地 agent 草稿、报告、worktree、参考 clone、历史备份与 agent 文档放入 `.agent/`，该目录不追踪。
 - 完成用户要求的修改后，请用脚本构建一个 importer 版本 APK 便于测试：
@@ -44,7 +44,7 @@ Android 侧拆成三层维护：
 
 ## 2. 当前支持版本矩阵
 
-`port-mod` 当前默认跟踪 `main`，并采用 flat matrix 打包模式：不按游戏版本切开发分支，而是从当前 checkout 的 `targets/active/*/target.json` 循环编译多个 target，并输出一个 schema 2 family 包。`compat/*` 分支只作为 legacy 发布包对照、回退诊断或历史维护入口；legacy 打包模式会通过临时 worktree 同时构建多个 schema 1 内置兼容包，仅在显式设置 `COMPAT_PACK_BUILD_MODE=legacy` 时使用。
+`port-mod` 默认跟踪 `main`。开发与签名发版用 flat matrix：从当前 checkout 的 `targets/active/*/target.json` 循环编译多个 target，并输出一个 schema 2 family 包；不会按目标切开发分支。正式 APK 用 `release` 模式内置已发布的签名包，而非从当前源码重打；`compat/*` 分支只用作 legacy 发布包对照、回退诊断或历史维护入口。
 
 | 通道 | 游戏版本 | Steam 分支 | 原版/解包引用配置 | legacy submodule 分支 | compile gate `ReferenceFlavor` | flat target id | legacy 兼容包 id |
 | --- | --- | --- | --- | --- | --- | --- | --- |
@@ -57,18 +57,23 @@ Android 侧拆成三层维护：
 | Beta 旧测试 | `v0.110.0` / `v0.110.1` | `public-beta` | `.env`: `STS2_ORIGINAL_V1100_REFERENCE_DIR` 或 `STS2_ORIGINAL_V1100_ROOT`（历史变量名，指向 v0.110.1） | — | `original-v0.110.0` | `v0.110.0`（显示 v0.110.x） | — |
 | Beta 旧测试 | `v0.111.0` | `public-beta` | `.env`: `STS2_ORIGINAL_V1110_REFERENCE_DIR` 或 `STS2_ORIGINAL_V1110_ROOT` | — | `original-v0.111.0` | `v0.111.0` | — |
 | 正式/稳定（当前） | `v0.111.1` | `public` | `.env`: `STS2_ORIGINAL_V1110_REFERENCE_DIR` 或 `STS2_ORIGINAL_V1110_ROOT`（复用现有 v0.111.0 引用） | — | `original-v0.111.0` | `v0.111.1` | — |
-| Beta 当前测试 | `v0.113.0` / `v0.113.1` | `public-beta` | `.env`: `STS2_ORIGINAL_V1130_REFERENCE_DIR` 或 `STS2_ORIGINAL_V1130_ROOT`（历史名，指向最新 v0.113.1） | — | `original-v0.113.0` | `v0.113.0`（稳定 id，显示 v0.113.x） | — |
+| Beta 旧测试 | `v0.113.0` / `v0.113.1` | `public-beta` | `.env`: `STS2_ORIGINAL_V1130_REFERENCE_DIR` 或 `STS2_ORIGINAL_V1130_ROOT`（历史名，指向 v0.113.1） | — | `original-v0.113.0` | `v0.113.0`（稳定 id，显示 v0.113.x） | — |
+| Beta 当前测试 | `v0.114.0` | `public-beta` | `.env`: `STS2_ORIGINAL_V1140_REFERENCE_DIR` 或 `STS2_ORIGINAL_V1140_ROOT` | — | `original-v0.114.0` | `v0.114.0` | — |
 
-当前 full family 使用 `compat_version=0.7.2-dev`，包含 10 个 active metadata target。`v0.111.1` 的 `versions=["v0.111.1"]`、`channel=stable`、`steam_branch=public`、`source=original_pc_reference_v0.111.1`，原版 `sts2.dll` SHA-256 为 `3fb1fa1bf0249087b706a5d0f062a60579e2f5b08df4ee477ddd6f2607f654d5`。它复用现有 `original-v0.111.0` flavor、V1110 引用配置与 `STS2_TARGET_1110`，不新增 flavor / V1111 环境变量或运行时补丁；旧 `v0.111.0` beta / `public-beta` 记录保持不变。两版托管 API、运行时 IL 与依赖等价，差异为构建身份、release 元数据及一项 patch-notes PCK 资源；仍需拆开 metadata target，因为归档导入没有 Steam 来源分支时，Workshop `auto` 会回落到 target 的 `steam_branch`，合并到旧 beta 记录会误选 `public-beta`。已有 Steam 来源分支仍优先。桌面审计及原版 ModelDb native/headless 初始化证据不代表 Android UI/玩法、普通 MOD 或 LAN 通过，也不承诺 v0.111.0/v0.111.1 跨版本联机。
+当前默认官方内置 full family 为 `v0.8.0`（revision 800），与本地 `matrix` 一样包含 11 个 active target。`v0.111.1` stable / `public` 与 `v0.111.0` beta / `public-beta` 仍是独立记录，复用 `original-v0.111.0`、现有 V1110 引用与 `STS2_TARGET_1110`，不新增 V1111 环境变量。两版托管 API、运行时 IL 与依赖等价，差异为构建身份、release 元数据及一项 patch-notes PCK 资源；归档未记录 Steam 来源时，Workshop `auto` 仍回落到各自 target 的 `steam_branch`。已有 Steam 来源分支优先。共享实现不保证跨版本联机或普通 MOD 兼容。
 
 v0.113.x 共享 target 保留 `v0.113.0` id、`original-v0.113.0` flavor 和 `STS2_TARGET_1130`；v0.113.0 / v0.113.1 原版 DLL SHA-256 分别为 `a6cc282c52b96ad2e01d5692b1144b33aa8e3ba4e969582f648ecb13b2f751d7` / `62ecbe91093e1fa862de4329aac865209dcb297804caf0f0520d92d8c0b4a9c3`，V1130 引用使用最新 v0.113.1。两版并非 API/IL 全等：v0.113.1 删除 `HoverTipAlignment.Center`、新增 `NHoverTipSet.SetAlignmentBelow` 并修改药水、玩法及存档逻辑，但 compat 所用合约和所有 scene/material/shader 条目不变，因此共用 variant，不改运行时补丁；不承诺普通 MOD API 等价或跨版本 LAN。仍不能追加到 v0.111.0 variant：v113 新模式与独立 `isCustom`、商店 `OnSelected()` 任务、宝箱 holder 布局及 atlas-aware blur 均需独立适配。LAN 直接复用原版 `NJoinFriendScreen.JoinGameAsync`，host/读档保留模式语义及 `IsCustomGame`，不重建 JoinFlow、握手或消息表。v113 所有 resolver/节点/缓存边界保留原版 `uv_region/radius_scale` blur，不注册旧 `NCard.Reload` / `NEpochSlot._blurShader` 修复；其他 target 维持原替换。商店通过单次 allowance 回放原版 `OnSelected()` 并等待实际购买 Task，不得恢复反射调用已删除的 slot `OnTryPurchase`。宝箱保留 1–6 预置布局和 Large reveal，只为更大容量补布局。
+
+Steam `public-beta` build `26909018` 的实际原版版本是 `v0.114.0`。在原 family 内使用独立 target、原版 DLL SHA 及 V1140 compile gate；复用 `STS2_TARGET_1130`，不把 v0.114.0 合并到 v0.113.x 的 `versions` / SHA 列表。原版处理新版热键、宝箱轮次投票、握手与消息，不由 Android 兼容层重做。
 
 关键文件：
 
 - `.gitmodules`：`port-mod` submodule GitHub URL 与默认 branch（`main`）。
+- `tools/android/bundled-compat-release.json`：默认发行 APK 的固定官方 tag，当前 `v0.8.0`。
 - `tools/android/bundled-compat-packs.json`：legacy 内置兼容包列表，当前包含 `compat/v0.103.2`、`compat/v0.106.1-beta` 与 `compat/v0.107.0-beta`。
 - `port-mod/targets/active/*/target.json`：flat matrix target 描述，记录 target id、支持版本、Steam 分支 `steam_branch`、`ReferenceFlavor`、compile constants、原版引用来源与一个或多个 dll sha；`v0.109.0` target id 为兼容既有 profile 保持不变，但同一 variant 支持 v0.109.0/v0.109.1 并显示为 v0.109.x；v0.110.0 因输入、联机协议、存档与玩法 API 变化使用独立 `v0.110.0` target，v0.110.1 与其托管 API/compat IL 等价，因此共享该 target；v0.111.0 因 transport-level handshake、service 构造参数和动画状态图变化使用新的独立 target。
-- `port-mod/tools/build-compat-matrix.sh`：从当前 checkout 构建 schema 2 family full compat 包；`tools/android/stage-bundled-compat-packs.sh` 默认会调用它。
+- `port-mod/tools/build-compat-matrix.sh`：从当前 checkout 构建 schema 2 family full compat 包；`stage-bundled-compat-packs.sh` 的 `matrix` 模式会调用它。
+- `port-mod/tools/publish-compat-release.sh`：本机编译全量 active matrix、签名并复核后才用 `gh release create` 发到 `ModinMobileSTS/sts2-android-compat`；`--dry-run` 不上传。`port-mod/tools/compat-release-signing.py` 管理 keygen/签名/历史索引合并和验证，仅发布 schema 2 full family（不含离线兜底 / 商业原版）。
 - `port-mod/tools/test-deferred-mod-patch-queue.sh`：用不含商业代码的合成 `sts2` fixture 回归用户 MOD `Harmony.PatchAll()` 逐目标延迟，覆盖危险 UI `.cctor`、同 PatchAll class 的安全模型 target、prepare/cleanup、失败隔离与 direct `PatchProcessor.Patch()` 路径。
 - `port-mod/tools/test-harmony-method-reference-importer.sh`：用实际打包 Harmony/MonoMod 与合成 `sts2` fixture 回归 method required/optional custom modifier 修复，覆盖 direct importer、独立 Cecil emitter fallback、class/struct、closed generic、parameter modifier 与可执行 setter 调用。
 - `port-mod/tools/test-modeldb-shadow-placeholder.sh`：用本机 original `sts2.dll` 与兼容层运行 shadow placeholder 合成回归，确认 MOD 初始化窗口不写 canonical ModelDb、vanilla generic lookup 可读取 shadow，phase 1 才发布。
@@ -76,17 +81,26 @@ v0.113.x 共享 target 保留 `v0.113.0` id、`original-v0.113.0` flavor 和 `ST
 - `offline-bootstrap/tools/test-offline-contract.sh`：运行合成 API 形状测试，并对本机已配置的所有已配置 original `sts2.dll` 做只读反射契约检查；不静态引用游戏程序集。
 - `offline-bootstrap/tools/build-offline-pack.sh`：先运行上述契约检查，再构建 schema 2 通用离线启动层包 `sts2-android-offline-bootstrap.zip`。
 - `tools/android/stage-bundled-compat-artifacts.sh`：APK 打包默认入口，一次清理 `android/assets/compat_packs/*.zip` 后 stage full compat family 包和 offline bootstrap 包。
+- `tools/android/stage-signed-compat-release.py`：默认 `release` 模式的下载/验签/staging；只用 `CompatPackReleaseTrust.java` 字面量公钥表和 `port-mod/tools/compat-release-signing.py` 的共同验证逻辑。官方 HTTPS 与重定向白名单、tag、schema、launcher code、签名、ZIP 长度/哈希和包内完整性都通过才原样复制。`.agent/cache/compat-releases/<tag>/` 每次复用须完整验证，拒绝失败输入、不回退 matrix；不可隐式使用干跑产物。回归：`python3 tools/android/test-stage-signed-compat-release.py -v`。
 - `.env.example`：工具链、runtime 参考、original compile gate 引用、签名环境变量示例；复制为 `.env` 后编辑，本文件不入 git。
 - `local.properties.example`：非环境变量的本地构建选项示例；复制为 `local.properties` 后编辑，本文件不入 git。
 - `tools/env/load-local-config.sh`：所有 bash 构建脚本共用的 `.env` / `local.properties` loader。
 - `port-mod/refs/original*/`：仅保留 README 占位；构建脚本不再依赖提交到仓库的个人 symlink。
-- `port-mod/compat_manifest.*.json`：legacy schema 1 兼容包 manifest，主要供旧发布包或诊断包使用；默认 matrix 包以 `targets/active/*/target.json` 生成 schema 2 manifest。
+- `port-mod/compat_manifest.*.json`：legacy schema 1 兼容包 manifest，主要供旧发布包或诊断包使用；本地 matrix 包以 `targets/active/*/target.json` 生成 schema 2 manifest。
 
 注意：启动器按 payload manifest 的 `sts2_dll_sha256` 与 `release_info.version` 为新建启动配置自动推荐/填写兼容包；schema 1 优先匹配 `target_game.version`，也支持 manifest 中的 `target_game.supported_versions` / `compatible_versions` / `versions` 列表；schema 2 会展开 `targets[]`。`sts2_dll_sha256` 可为兼容旧包的单字符串，也可为同一 API-compatible variant 的 SHA 数组，精确匹配会检查数组全部元素；版本页与 ADB 状态同时保留 legacy 主 SHA 和完整 SHA 列表。当前匹配评分顺序是：任一精确 dll sha、target 主版本、manifest 显式支持版本、offline bootstrap wildcard；同等精确命中时优先推荐 schema 2 family 包，offline bootstrap 只在没有任何 full compat 包命中当前 payload 时自动推荐，且 probe v2 已记录相同 `pack_id + target_id + compat_version + source zip SHA + payload version + sts2.dll SHA` 终态失败时不再自动推荐。兼容包选择以 `<files>/instances/<profile_id>/instance.json` 中的 `compat_pack_id` 为准，schema 2 还会记录 `compat_target_id`，不再使用全局选中包作为运行时 fallback；从 legacy 内置包升级到 flat family 包时，启动器安装 bundled compat pack 后会把旧 `sts2-android-compat-v0.*` 启动配置自动迁移到 `sts2-android-compat` + 对应 `compat_target_id`，但不会覆盖用户手动选择的非 bundled 包。若当前启动配置未绑定兼容包、绑定的包已删除或 schema 2 target 缺失，启动前会先等待内置包安装完成，再弹出 Bottom Sheet：先从内置/已安装 full 包按现有 SHA/version 评分推荐最佳 target，只有没有任何 full 命中时才推荐未记录终态失败的通用离线包；用户可显式“使用推荐并继续”（写回当前 profile 的 `compat_pack_id` / `compat_target_id`），也可直接打开“版本 → 兼容包”管理，启动器不会静默改写 profile。若已绑定包存在但与 payload 版本不一致，仍显示风险对话框供编辑配置或承担风险继续；offline bootstrap 首次启动某个 pack/version/SHA 组合时会额外提示风险，并在运行时原子写 `<files>/launcher/offline-bootstrap-probe.json`，状态依次为 `starting / patches_installed / modeldb_initializing / ready` 或终态 `unsupported_api / apply_failed / runtime_failed`；手动选择已失败组合时显示详情并允许诊断重试，ADB 自动化 `status` 同时输出原始 `offline_bootstrap_probe`。当前不会仅因 `sts2.dll` SHA-256 不一致硬阻止 full compat 启动，但 manifest 中仍记录 SHA 供诊断和精确匹配升级使用。
 
 自动 offline 重匹配：`instance.json` 与 selected launch context / ADB 状态记录 `compat_selection_source=auto/manual/unknown`。默认推荐与“使用推荐并继续”为 `auto`，选择器显式点选（包括同一 offline 包或清空选择）为 `manual`；只改名称/存档/MOD 模式保留最新绑定和来源。仅当前自动 offline wildcard 绑定可在出现完整、按现有 SHA/version 评分命中的 full target 后升级；内置安装完成、外部包导入、重选配置、复用默认配置与启动前均重查，同步 selected context / compat 诊断，不重选已有 full 包。缺少来源字段的旧配置及未知来源按 `unknown` 保守保留，不能猜测成自动选择或覆盖用户手动绑定。回归：`AutomaticOfflineCompatSelectionTest`。
 
 离线风险确认/失败详情对话框的正文下方，在存在按现有 SHA/version 规则命中且 DLL/overlay 完整的 full target 时，提供显示支持版本的“发现匹配兼容包 / 切换并继续启动”按钮。点击复用推荐应用流程，更新当前 profile 的 pack/target、来源 `auto` 和 selected context 后重新走 `launchGame()` 校验，不为离线包写入批准；无 full 匹配时隐藏该按钮。提示只说明当前配置绑定离线兜底，不能断言当前没有匹配 full 包。未知/手动绑定仍不静默覆盖，离线确认频率与 probe 规则不变。
+
+官方兼容包 OTA：`CompatPackReleaseTrust` 固定索引与 ZIP 的官方仓库 URL，OkHttp 仅允许 HTTPS 及精确 host `github.com` / `objects.githubusercontent.com` / `release-assets.githubusercontent.com`（最多 5 跳）；不走 GitHub REST，不添加镜像代理、不改写 URL，遵循 Android 系统网络设置（HTTP 代理使用 HTTPS `CONNECT` 隧道）。`CompatPackReleaseVerifier` 使用已有 bcprov 的轻量级 Ed25519，不注册 JCA provider；空公钥表、未知 key id、坏签名 fail-closed。缓存索引每次读盘重验，静默冷却 6 小时，ETag 304 仅复用已验签索引；404 是暂无发布。整包 SHA-256、包内清单、所有 variant 与 launcher code/schema 通过后才替换目标目录。`github_release` 来源记录 tag/revision/URL/key id/ZIP hash。缺包 Sheet、离线确认/失败 Dialog、“版本 → 兼容包”均复用现有滚动容器；无本地 full 命中时允许显式下载并继续，后台检查不安装、不弹窗。
+
+首个公开兼容包 [v0.8.0](https://github.com/ModinMobileSTS/sts2-android-compat/releases/tag/v0.8.0)（revision 800，11 个 target）用于 OTA 联调。新的 importer 构建默认带这份官方 ZIP；首次离线启动以 `bundled_asset` 安装，联网时签名索引的相同 SHA 显示已安装。该包的最低启动器 versionCode 为 115；未内置 `sts2-compat-release-v1` 公钥的旧 APK 即使满足版本门槛也不能信任首发索引。签名私钥留在仓库外，后续发版沿用同一密钥，轮换见构建文档 §6.1。
+
+缺包或离线兜底弹窗的在线区可用时，在没有进行中的检查、未报告信任公钥未配置且缓存无当前 payload 的可安装推荐时，打开弹窗主动强刷索引。启动时临时断网或旧缓存未命中都可重查；同一 Activity 用 `elapsedRealtime()` 对弹窗强查做 45 秒防抖，不改静默冷却或管理页手动刷新。回归：`CompatPackOnlineUiTest`，系统 HTTP 代理的 HTTPS `CONNECT` 回归见 `CompatPackReleaseSecurityTest`。
+
+内置包防降级：相同 ZIP SHA 跳过；有双方正 `compat_revision` 优先比整数，否则比较 SemVer。准备/启动/默认“安装内置”只在内置严格更新时覆盖完好的在线、SAF 或未知来源包；已有内置包同版本可随不同 ZIP 更新，禁止降级；缺工件可修复，显式 force 独立于默认路径。安装即使跳过也必须继续 legacy 迁移与 `auto` offline 重匹配；在线安装后同步两份 selected JSON，不能静默替换 `manual` / `unknown` 离线绑定。回归：`CompatPackBundledDowngradeProtectionTest`、`CompatPackReleaseSecurityTest`、`CompatPackRemoteUpdateFlowTest`，以及 `AutomaticOfflineCompatSelectionTest`、`CompatLaunchReadinessTest`、`ModalScrollingTest`。
 
 ## 3. 本地配置 / 参考输入
 
@@ -103,11 +117,14 @@ cp local.properties.example local.properties
 - `STS2_ANDROID_RUNTIME_REFERENCE_ROOT`：参考 Android template/runtime，包含 `libs/`、`assets/dotnet_bcl/`、Gradle wrapper jar。
 - `STS2_FMOD_PLUGIN_AAR`、可选 `STS2_FMOD_ANDROID_LIBS_DIR`（默认从 AAR 旁的 `arm64/` 读取经 SHA 校验的 FMOD 2.03.06 native 三件套）、`STS2_CRYPTO_NATIVE_JAR`。
 - `STS2_ORIGINAL_V103_REFERENCE_DIR` / `STS2_ORIGINAL_V1061_REFERENCE_DIR` / `STS2_ORIGINAL_V1070_REFERENCE_DIR` / `STS2_ORIGINAL_V1071_REFERENCE_DIR` / `STS2_ORIGINAL_V1080_REFERENCE_DIR` / `STS2_ORIGINAL_V1090_REFERENCE_DIR` / `STS2_ORIGINAL_V1100_REFERENCE_DIR` / `STS2_ORIGINAL_V1110_REFERENCE_DIR` / `STS2_ORIGINAL_V1130_REFERENCE_DIR`（或对应 `*_ROOT`）：original compile gate 引用目录，需包含 `sts2.dll`、`GodotSharp.dll`、`0Harmony.dll`；`V1090` / `V1100` / `V1130` 是共享 target 保留的历史变量名，分别指向最新 v0.109.1 / v0.110.1 / v0.113.1；`V1110` 保留现有 v0.111.0 引用，同时供独立 v0.111.1 stable/public 与 v0.111.0 beta/public-beta metadata target 使用。
+- `STS2_ORIGINAL_V1140_REFERENCE_DIR`（或 `STS2_ORIGINAL_V1140_ROOT`）：对应 v0.114.0 的独立 compile gate；复用 `STS2_TARGET_1130`。
 - `RELEASE_KEYSTORE_*`、可选 `STS2_PAYLOAD_ZIP`、可选 `STS2_EXTERNAL_PROJECTS_ROOT`。
+- `COMPAT_RELEASE_SIGNING_KEY_FILE`：仓库外 Ed25519 PEM 私有路径；`COMPAT_RELEASE_SIGNING_KEY_ID` 默认 `sts2-compat-release-v1`。与 APK keystore 无关；仅公钥进入 `CompatPackReleaseTrust`，首次配置和干跑命令见 `doc/build/building-and-packaging.md` §6.1。
+- `COMPAT_PACK_BUILD_MODE` / `compat.pack_build_mode`：`release`（默认）、`matrix`（编译未发布源码）或 `legacy`（诊断）；`COMPAT_BUNDLED_RELEASE_TAG` / `compat.bundled_release_tag` 可覆盖固定 tag，`latest` 必须显式选用。离线用 `COMPAT_BUNDLED_RELEASE_DIR` / `compat.bundled_release_dir` 指定同一签名三件套所在目录。显式环境优先于 `.env` 和 `local.properties`；`release` 模式依赖 Python `cryptography`，不需签名私钥。
 
 `local.properties` 保存非 secret 的本地构建选项，例如 Gradle task、dist 输出路径、compat pack staging 目录、默认 `ReferenceFlavor`、外部 GitHub 参考项目 clone 目录。完整说明见 `doc/build/local-configuration.md`。
 
-不要提交用户游戏 zip、original/reference DLL、完整 runtime、keystore 或 `.env` / `local.properties`。
+不要提交用户游戏 zip、original/reference DLL、完整 runtime、keystore、兼容包 Ed25519 私钥或 `.env` / `local.properties`。
 
 ## 4. 当前目录结构
 
@@ -168,8 +185,10 @@ s2_re/
       patch-godot-input-pool.py # 修补 staged Godot AAR 鼠标输入事件池泄漏
       test-godot-input-pool.sh  # Godot debug/release AAR 输入池静态回归
       build-port-mod.sh            # 编译当前 submodule checkout 并 stage legacy fallback dll/pck
-      stage-bundled-compat-packs.sh # 默认构建 full flat family 包；COMPAT_PACK_BUILD_MODE=legacy 时跑 legacy 多分支构建
+      stage-bundled-compat-packs.sh # 默认验签内置官方 ZIP；matrix/legacy 为显式本地模式
       stage-bundled-compat-artifacts.sh # APK 默认入口：stage full family 包 + offline bootstrap 包
+      bundled-compat-release.json # 官方内置包 tag pin
+      stage-signed-compat-release.py # 按 APK 公钥验签并复制正式 Release ZIP
       bundled-compat-packs.json    # legacy 内置兼容包分支列表
       make-bootstrap-pck.py        # 生成最小 bootstrap.pck
       make-port-overlay-pck.py     # 从 port-mod/overlay 生成 legacy fallback port_compat.pck
@@ -346,7 +365,7 @@ tools/git/report-heads.sh
 
 - 修改兼容层源码时默认在 `port-mod/main` 上工作；确认当前 checkout 是 `main`，不要把普通共用功能继续落到某个 `compat/*` 版本分支。
 - 兼容层改动要在 submodule 仓库内提交，再在父仓库更新 submodule 指针。
-- 默认 `tools/android/stage-bundled-compat-packs.sh` 不切分支，直接从 `port-mod/main` 的 active target matrix 构建 schema 2 family 包。
+- APK 打包默认 `release` 模式，不切分支、不重编 full family；显式用 `COMPAT_PACK_BUILD_MODE=matrix` 才验证/内置 `port-mod` 当前 checkout 的本地改动。
 - 仅在 `COMPAT_PACK_BUILD_MODE=legacy` 时，stage 脚本才会为非当前 legacy 分支创建临时 worktree 到 `.agent/worktrees/compat-packs/`，避免旧分支补丁互相污染；当前 checkout 若正好是某个 legacy 分支且有未提交改动，脚本会用 dirty worktree 构建对应 legacy 包，便于本地诊断。legacy worktree 会从当前共享源码列表注入跨版本热修；新增 `ModEntry.cs` 直接引用的源码文件时必须同步加入该列表，当前列表需包含 `DevTools/*.cs`、`RunHistoryPatches.cs`、`CombatAnimationWarmupPatches.cs`、`SpineWarmupPreview.cs`、`ExtendedMultiplayerRoomPatches.cs`、`MobileReactionButtonPatches.cs`、`MobileReactionVisibilityPolicy.cs`、`MobileReactionPointerState.cs`、`MobileReactionWheelPlacement.cs` 与资源释放保护所需的 `AndroidAssetCacheLifecyclePatches.cs`。
   资源安全热修的 legacy 注入还必须包含 `UiScalePatches.cs`、`CombatBackgroundPatches.cs`、`EventLayoutPatches.cs`、`MobileLayoutPatches.cs`、`LifecycleAndPerformancePatches.cs`、`LearnedWarmAssetStore.cs` 与 `AndroidParticlePreprocessPatches.cs`，保持所有 legacy 包的节点订阅、load-only gate 和学习缓存协议一致。
   表情入口的 legacy 注入同时必须包含 `MobileReactionSurfaceTracker.cs`，不能回退每 250ms 全树递归扫描的旧显示检查。
@@ -355,7 +374,7 @@ tools/git/report-heads.sh
   三项运行时优化的 legacy 注入还必须包含 `CombatVfxPoolPatches.cs`、`RuntimeAssetLoadingPatches.cs`、`AndroidFontSizeScaler.cs`。VFX 池只保留当前战斗房间正常播放结束的原版伤害数字/命中火花/小刀/大斩击/火焰爆发，空闲上限分别为 16/8/8/2/2；超额仍创建完整特效，不改数量、时序、伤害或网络。新增 `NBigSlashVfx` / `NFireBurstVfx` 只接入已核对的粒子树及 Task/CTS 合约，不扩通用快照节点白名单、不自动枚举其他 VFX、不接管卡牌/角色/Spine/动画播放器或启动预热备件，不改预加载范围或 GC。租约通过原版 async 播放方法的 ExecutionContext 隔离，旧 continuation 不得释放新租用对象；外部移除走原版销毁，离房释放全部空闲实例。只接受已知节点形状，带未知子脚本或其他 Harmony owner 修改工厂、生命周期、ApplyTint/ModulateParticles 时不复用。小刀染色材质每实例独立持有，斩击/火焰保持节点 SelfModulate 染色；正常归还后停发射并关闭旧 CTS，重租恢复原始视觉状态后重新 Ready、Restart 粒子并创建新 CTS。Godot StringName 必须到 NGame Ready 后才创建。原版 AssetLoadingSession 在出队之前共享约 2ms 的协作时间预算，各阶段最多 8 项；不伪造空队列，不改完成/错误处理、原版在途上限或 VFX 串行语义。字体缩放固定缓存 StringName 元数据键，默认 100% 不新增无用 override，相同值不重复写；保留字号基准、恢复路径、自动字号和语言 fallback。FramePreparation 原生回归覆盖三项边界与新增两族的状态复位、CTS、租约迟到、2 槽满溢和脚本/tint opt-out，`STS2_FRAME_REFERENCE_DLLS` 可提供分号分隔的原版 DLL 路径，仅做只读 Cecil 合约检查，不执行游戏程序集。
   商店缩放热修的 legacy 注入必须包含 `MerchantLayoutPatches.cs`；打开动画按商品面板的 `AnchorTop` 与商店当前 Control 高度插值锚点偏移，不能用根窗口 `ContentScaleSize.Y` 代替实际可用高度，也不能恢复固定绝对 Y 目标，否则 `global_scale > 100%`、组合缩放或动画中改缩放会再次把底排推出屏幕。保留原版商品尺寸、购买行为和动画曲线，不修改全局 ContentScale 或渲染分辨率。
   独立实验开关 `preload_render_warmup_enabled=false` 只依赖 `preload_enabled`，旧预热项和默认值保留且可手动关闭，不隐式互锁。legacy 注入须包含 `RenderReplicaWarmup.cs` / `RenderWarmupPatches.cs`。它从离树静态 VFX 与当前战斗只读抽取纯原生绘制替身，每批最多 8 项，在不透明遮罩后真实绘制；源节点不进树、不调用 Ready/Process/动画/工厂，但场景离树实例化仍可能执行构造器。不得修改活体可见性/材质/变换/粒子或复制其脚本进树；材质与采样器继承必须停止于非 CanvasItem、CanvasLayer 和 top-level 边界，GPUParticles2D setter 对默认 3D process material 的归一化须隔离。保留进程级渲染资源 pin，不保留源场景树/临时粒子 buffers；骨骼和运行时未知几何明确跳过。日志中的提交/post-draw 不可报告成 GPU 完成或缓存落盘；不承诺全 shader、音频/JIT 或冷缓存零卡顿。`FramePreparation.Tests` 的实际 GLES 像素、回调隔离、继承边界、粒子共享、批次/取消/资源保留检查必须使用真实 renderer，不能再用 `--headless`；无显示器时用 Xvfb/Mesa。具体命令见 `doc/runtime/compat-pack-loading-flow.md`。
-- flat matrix 模式下，通用源码改动只在当前 checkout 上维护；版本差异优先放入 `port-mod/targets/active/<target_id>/target.json`、target capabilities/adapter 或极少量条件编译，不再为普通共用功能复制到多个分支。停止内置某个早期版本时，把对应 target 移到 `targets/archived/`，默认 matrix 构建会跳过它。
+- flat matrix 模式下，通用源码改动只在当前 checkout 上维护；版本差异优先放入 `port-mod/targets/active/<target_id>/target.json`、target capabilities/adapter 或极少量条件编译，不再为普通共用功能复制到多个分支。停止维护某个早期版本时把 target 移到 `targets/archived/`，后续 matrix 不再构建它；官方内置变更须经新 Release 和 APK pin 更新。
 
 ### 8.2 构建入口
 
@@ -365,7 +384,7 @@ tools/git/report-heads.sh
 tools/android/build-port-mod.sh
 ```
 
-默认 `REFERENCE_FLAVOR=original-v0.113.0` 为共享 v0.113.x 的历史 flavor，引用使用最新 v0.113.1；v0.111.1 / v0.111.0 共用 `original-v0.111.0` 与现有 V1110 引用，旧共享 v0.110.x / v0.109.x 分别使用对应历史 flavor 和 v0.110.1 / v0.109.1 引用。脚本会：
+默认 `REFERENCE_FLAVOR=original-v0.114.0`，使用 V1140 的原版引用；保留的 v0.113.x 使用 `original-v0.113.0` 与 v0.113.1 引用。更早的 target 仍可选择对应 flavor。脚本会：
 
 1. 使用 `.env` 中的 `DOTNET_BIN` 编译 `port-mod/STS2AndroidPortCompat/STS2Mobile.csproj`，并按 `ReferenceFlavor` 传入对应 `CompatReferenceDir`。
 2. 写入 build metadata（branch/commit/dirty/timestamp）。
@@ -379,19 +398,19 @@ cd port-mod
 ./tools/build-compat-pack.sh
 ```
 
-- 构建全部内置兼容包并复制到 APK assets：
+- Stage 全部内置兼容包并复制到 APK assets：
 
 ```bash
 tools/android/stage-bundled-compat-artifacts.sh
 ```
 
-APK 默认使用统一 staging 入口，输出 gitignored 的 `android/assets/compat_packs/sts2-android-compat.zip` 和 `android/assets/compat_packs/sts2-android-offline-bootstrap.zip`。full compat 包仍可单独构建：
+APK 默认使用统一 staging 入口，输出 gitignored 的 `android/assets/compat_packs/sts2-android-compat.zip` 和 `android/assets/compat_packs/sts2-android-offline-bootstrap.zip`。full compat 包可单独 stage：
 
 ```bash
 tools/android/stage-bundled-compat-packs.sh
 ```
 
-`stage-bundled-compat-packs.sh` 默认 flat matrix 模式读取 `port-mod/targets/active/*/target.json`，调用 `port-mod/tools/build-compat-matrix.sh`，从当前 checkout 依次用对应 `ReferenceFlavor` 编译，并输出一个 schema 2 `sts2-android-compat.zip` family 包。`offline-bootstrap/tools/build-offline-pack.sh` 会先调用 `offline-bootstrap/tools/test-offline-contract.sh`，用 synthetic API 形状与本机已配置的 original references 验证反射合约，然后构建 schema 2 `sts2-android-offline-bootstrap.zip`。该测试只动态读取 `sts2.dll`，不改变 offline bootstrap 的静态引用边界。APK 启动时 `CompatPackManager.installBundledCompatPacks()` 会把打入 assets 的这些 zip 安装到 `<files>/compat-packs/`。
+默认从固定官方 tag 验签并原样内置；OTA 单独发布走 `port-mod/tools/publish-compat-release.sh`，发新 APK 更新 [`bundled-compat-release.json`](tools/android/bundled-compat-release.json)，调试未发补丁显式 `COMPAT_PACK_BUILD_MODE=matrix`。三条路径见 [发布与打包 SOP](doc/build/building-and-packaging.md#6-构建内置兼容包)。`offline-bootstrap/tools/build-offline-pack.sh` 仍先调用 `test-offline-contract.sh` 检查合成 API 形状及已配置原版引用，再构建通用离线包；测试只动态读取 `sts2.dll`，不改变其静态引用边界。APK 启动时 `CompatPackManager.installBundledCompatPacks()` 会把打入 assets 的这些 zip 安装到 `<files>/compat-packs/`。
 
 legacy 分支模式只在需要对照旧发布包或回退诊断时使用：
 
@@ -404,8 +423,11 @@ COMPAT_PACK_BUILD_MODE=legacy tools/android/stage-bundled-compat-packs.sh
 ```bash
 cd port-mod
 ./tools/build-compat-matrix.sh --target v0.113.0
+./tools/build-compat-matrix.sh --target v0.114.0
 ./tools/build-compat-matrix.sh
 ```
+
+线上 Release 要求递增 `compat_revision`、明确最低 `min_launcher_version_code` 并合并验证过的历史索引（最近最多 15 条）。用 `python3 port-mod/tools/test-compat-release-signing.py` 跑离线签名与篡改回归，用 `publish-compat-release.sh --dry-run` 验证本地全链路；首次配置、公钥轮换边界与实际上传命令见 `doc/build/building-and-packaging.md` §6.1。
 
 ### 8.3 compile gate
 
@@ -421,8 +443,11 @@ REFERENCE_FLAVOR=original-v0.106.1 tools/android/build-port-mod.sh
 # v0.108.0 正式/稳定（保留的旧版本）
 REFERENCE_FLAVOR=original-v0.108.0 tools/android/build-port-mod.sh
 
-# v0.113.x 当前 beta（历史 flavor，引用使用 v0.113.1）
+# v0.113.x 保留的 beta（历史 flavor，引用使用 v0.113.1）
 REFERENCE_FLAVOR=original-v0.113.0 tools/android/build-port-mod.sh
+
+# v0.114.0 当前 public-beta
+REFERENCE_FLAVOR=original-v0.114.0 tools/android/build-port-mod.sh
 
 # v0.111.1 当前 stable/public 与 v0.111.0 旧 beta/public-beta（共享现有 V1110 引用）
 REFERENCE_FLAVOR=original-v0.111.0 tools/android/build-port-mod.sh
@@ -441,8 +466,9 @@ REFERENCE_FLAVOR=original-v0.107.0 tools/android/build-port-mod.sh
 
 # 或裸跑 dotnet 时显式传入 .env 中配置的引用目录
 "$DOTNET_BIN" build port-mod/STS2AndroidPortCompat/STS2Mobile.csproj \
-  -p:ReferenceFlavor=original-v0.113.0 \
-  -p:CompatReferenceDir="$STS2_ORIGINAL_V1130_REFERENCE_DIR" -v:q
+  -p:ReferenceFlavor=original-v0.114.0 \
+  -p:DefineConstants=STS2_TARGET_1130 \
+  -p:CompatReferenceDir="$STS2_ORIGINAL_V1140_REFERENCE_DIR" -v:q
 ```
 
 `ReferenceFlavor=runtime`（默认 MSBuild 属性）引用旧 launcher runtime，适合快速编译；正式兼容分支应通过对应 original gate。
@@ -531,7 +557,7 @@ REFERENCE_FLAVOR=original-v0.107.0 tools/android/build-port-mod.sh
 - 默认 build type：`release`（脚本执行 `assembleMonoRelease`）
 - ABI：`arm64-v8a`
 - applicationId：`com.megacrit.sts2re`
-- versionName/versionCode：`v0.1.13` / `115`
+- versionName/versionCode：`v0.1.14` / `116`
 - 默认测试签名：由 `.env` 的 `RELEASE_KEYSTORE_*` 或 `local.properties` 的 `android.release_keystore_*` 提供；示例使用 `${HOME}/.android/debug.keystore`。
 
 注意：`release` build type 当前仍保留 `debuggable true`，便于 sideload 后使用 `run-as` 验证；正式发布前必须重新审视签名、debuggable、混淆、资源优化、FileProvider 暴露范围。
@@ -579,13 +605,13 @@ tools/package/build_importer_apk.sh
 
 1. `tools/android/sync-runtime-from-references.sh`
 2. `tools/android/build-port-mod.sh`
-3. `tools/android/stage-bundled-compat-artifacts.sh`
+3. `tools/android/stage-bundled-compat-artifacts.sh`（默认原样内置官方签名 ZIP，另构建 offline bootstrap）
 4. `tools/android/gradle-with-s2-env.sh assembleMonoRelease`（默认使用 debug keystore 参数签 release build）
 5. 验证 v1/v2/v3 签名及已有稳定 APK 的证书连续性，成功后复制输出、清除残留 `.idsig` 并输出 APK SHA-256：
    - Gradle 产物：`android/build/outputs/apk/mono/release/sts2-re.apk`
    - 稳定副本：`dist/sts2-re-importer.apk`
 
-compat / offline bootstrap 构建脚本会把 Git branch、commit 与 commit subject 写入 build metadata / manifest；传给 MSBuild 的 branch/subject 必须先转义逗号、分号和百分号，否则当前提交标题含逗号时会被 MSBuild 拆成多个 `-p:` 属性并导致 APK 打包失败。
+本地 compat / offline bootstrap 构建脚本会把 Git branch、commit 与 commit subject 写入 build metadata / manifest；传给 MSBuild 的 branch/subject 必须先转义逗号、分号和百分号，否则当前提交标题含逗号时会被 MSBuild 拆成多个 `-p:` 属性并导致 APK 打包失败。已签名官方 ZIP 不做任何改写。
 
 ### 9.4 直装版 APK
 
@@ -639,8 +665,14 @@ tools/android/stage-bundled-compat-artifacts.sh
 # 单独验证 offline bootstrap synthetic/已配置 original 反射合约
 offline-bootstrap/tools/test-offline-contract.sh
 
-# 只构建 full family 包（默认 flat schema 2 family 包）
+# 只 stage 官方签名 full family ZIP（默认固定 tag）
 tools/android/stage-bundled-compat-packs.sh
+
+# 只编译并 stage 本地 port-mod family；测试本地 APK 时也显式选 matrix
+COMPAT_PACK_BUILD_MODE=matrix tools/android/stage-bundled-compat-packs.sh
+
+# 签名、缓存、ZIP 完整性和配置边界回归
+python3 tools/android/test-stage-signed-compat-release.py -v
 
 # legacy 分支模式，仅用于回退诊断
 COMPAT_PACK_BUILD_MODE=legacy tools/android/stage-bundled-compat-packs.sh
@@ -675,7 +707,7 @@ tools/android/generate-material-symbol-vectors.py --check
   - .NET `bin/` / `obj/`
 - `android/assets/compat_packs/*.zip` 是脚本生成的内置兼容包 assets，随 APK 打包但不再由 git 跟踪；需要刷新 APK 内置包时运行 `tools/android/stage-bundled-compat-artifacts.sh` 或完整打包脚本，提交前不要 `git add -f`。
 - 不要提交用户 payload zip、original/reference DLL、完整 runtime、keystore、compat pack zip 或任何商业游戏资源；本机路径只写入 `.env` / `local.properties`。
-- 修改 `port-mod/overlay` 后需要重新生成 `port_compat.pck`，并重新导出/复制内置兼容包。
+- 修改 `port-mod/overlay` 后重新生成 `port_compat.pck`，用 `matrix` 模式测试本地改动；官方内置包须先重新签名发布新 tag，再更新 APK pin，不要就地重打已发布 ZIP。
 - 修改 `tools/android/make-bootstrap-pck.py` 后需要重新生成 `android/assets/bootstrap.pck`。
 - 修改启动器图标 glyph 映射或新增 `MaterialSymbols.drawable(..., "glyph", ...)` 字符串图标后，需要运行 `tools/android/generate-material-symbol-vectors.py` 刷新 `android/res/drawable/ic_ms_*.xml`，并用 `tools/android/generate-material-symbol-vectors.py --check` 校验；脚本依赖 Python `fontTools`，可装在 ignored 的 `.agent/` venv 中。不要恢复运行时 icon font ligature 渲染，否则 MIUI 关闭优化等 ROM 字体路径可能显示原始 glyph 名称。
 - 修改 Java bridge 包名/类名要谨慎：C# helper 和 patched runtime 默认找 `com.godot.game.GodotApp`。
@@ -735,9 +767,9 @@ adb shell run-as com.megacrit.sts2re ls files/.godot/mono/publish/arm64
 重点 smoke test：
 
 1. 首次打开进入欢迎向导/附加设置，而不是直接进游戏。
-2. “版本”页能安装/显示 full family `0.7.2-dev` 的 10 个 active target，包含当前 stable/public `v0.111.1`、当前共享 `v0.113.x` beta（v0.113.0/v0.113.1，稳定 id `v0.113.0`）、旧 beta/public-beta `v0.111.0`、正式 `v0.103.x` / `v0.107.1` / `v0.108.0`、共享 `v0.109.x` / `v0.110.x` target，以及旧 beta `v0.106.1` / `v0.107.0`。
+2. 断网新装时，“版本”页显示内置官方 full family `v0.8.0` 的 11 个 target（包括 stable/public `v0.111.1`、当前 public-beta `v0.114.0` 及共享 `v0.113.x`，id `v0.113.0`）；核对 `installed_source.kind=bundled_asset` 和 ZIP SHA。联网刷新“版本 → 兼容包 → 在线更新”时，同 ZIP 条目显示已安装。显式安装更高版本时则核对 `installed_source.kind=github_release`、tag 与 ZIP SHA，并确认冷启动及默认“安装内置”不降级。
 3. 导入版选择 PC zip 或 Steam 下载后，`files/payloads/<payload_id>/game/.payload_manifest.json` 存在，`files/payloads/<payload_id>/game/SlayTheSpire2.pck` 存在，并创建/选择 `files/instances/<profile_id>/instance.json`；切换版本不应复制回 `files/game/`。Steam 下载来源应在 manifest 中记录 `source.kind=steam_depot`。
-4. 新建启动配置时按 payload 版本填入匹配兼容包；之后不再有全局选中包。删除 payload 或 compat pack 后，相关启动配置仍保留并在列表中显示缺失；当前 profile 无可用兼容包时启动会弹推荐 Bottom Sheet，优先给出内置/已安装 full 匹配，无 full 匹配才给出离线通用包，并允许“使用推荐并继续”或直接打开兼容包管理。
+4. 新建启动配置时按 payload 版本填入匹配兼容包；之后不再有全局选中包。删除 payload 或 compat pack 后，相关启动配置仍保留并在列表中显示缺失。缺包 Bottom Sheet 优先推荐内置/已安装 full target，无 full 命中才推荐离线包。用带公钥的 APK 额外验证：移除本地 full 包后，手动绑定 offline 的 profile 在启动风险弹窗上看到在线匹配；点“下载、切换并启动”后才改变同一 profile 的 pack/target，并核对两份 selected JSON 及实际 staging 文件。
 5. 点击启动后 logcat / 当前 profile 的 `files/instances/<profile_id>/logs/android-launch.log` 能看到 selected compatibility pack 和 `Loading imported game PCK`；全局 `files/logs/sts2.log` 应包含应用内采集到的 Android logcat（如 `Sts2Re` / `GODOT` / `[STS2Mobile]`）。
 6. `files/.godot/mono/publish/arm64/STS2Mobile.dll` 来自当前选择的兼容包；`files/port_compat.pck` 已 staging。
 7. 修改图形/输入/MOD 设置后，当前 profile 解析出的 settings（全局 `files/default/1/settings.save` 或隔离 `files/instances/<profile_id>/default/1/settings.save`）有对应字段；新安装/新建隔离档案首次生成的默认图形设置应为 `msaa=0`、`vsync=off`；画面高级里的旋转模式默认写入 `android_screen_rotation_mode=user_landscape`，选择“自动”时写入 `auto`，选择“不旋转”/“180°”时分别写入 `landscape` / `reverse_landscape` 并同步旧 `android_flip_screen_180` 布尔值。
@@ -745,6 +777,7 @@ adb shell run-as com.megacrit.sts2re ls files/.godot/mono/publish/arm64
 8. 从游戏内打开附加设置、退出回设置、crash/log/file browser 页面不崩溃。
 9. MOD master switch / 单 MOD disable 能在启动日志或游戏内 MOD 状态中反映；普通 MOD 从当前 profile 的 MOD 目录扫描（全局 `files/mods` 或隔离 `files/instances/<profile_id>/mods`），不走 Steam Workshop。
 10. `v0.113.0` / `v0.113.1` payload 应按各自 DLL SHA（`a6cc282c...` / `62ecbe91...`）精确使用 `sts2-android-compat` / `v0.113.0`（显示 v0.113.x）；`v0.111.1` 按 SHA `3fb1fa1b...` 使用独立 stable/public `v0.111.1` target，`v0.111.0` 按 SHA `0861bfa1...` 保留 beta/public-beta `v0.111.0` target。归档导入未记录 Steam 来源分支时，Workshop `auto` 应分别回落为 `public` / `public-beta`；有来源分支时仍优先使用来源记录。`v0.110.0` / `v0.110.1` 按各自 SHA（`7a259236...` / `7c446efa...`）使用共享 `v0.110.0` target；`v0.109.0` / `v0.109.1` 使用共享 `v0.109.0`，其他历史 payload 继续按各自 target 匹配。v0.113.x LAN 仍需同版本 Android/未修改 PC 的 host/join/load/rejoin、Standard/Daily/Blitz/Dread/custom 路由、MOD mismatch、ModelDb hash mismatch 和失败提示真机验证；v0.111.1 也仍需 Android UI/玩法、普通 MOD 与同版本 LAN 验证，不承诺 v0.111.0/v0.111.1 或 v0.113.0/v0.113.1 跨版本互联，桌面本机验证不能替代真机。
+    `v0.114.0` payload 按 SHA `ddceb879...` 使用独立 `v0.114.0` target，归档导入时 Workshop `auto` 回落到 `public-beta`。普通 MOD 与同版本 Android/PC 联机仍分别验证，不以共享补丁路径推断兼容性。
 11. Steam 中心可登录/验证 refresh token；手机确认出现后应立即存在认证前台通知并已经轮询，切到 Steam App 批准再返回即可完成，不需要小窗或额外点击“已批准”。至少实测普通切后台、Activity 重建、CM 断线后重连、未过期事务的进程恢复、Guard 动态码、取消与 4 分钟超时；确认密码/本次 Guard code 不落盘或进入日志、取消/过期清除 pending handle、旧事务迟到结果不能覆盖新事务。Steam Cloud 手动刷新/拉取/上传使用当前 launch profile 的 account root，拉取前在 `files/steam/cloud/<profile_id>/backups/` 创建备份。WebDAV 中心可配置 URL/用户名/密码/槽位、测试连接，并把同一 account root 的白名单存档同步到远端 `SlayTheSpire2/saves/<slot>/`；拉取前在 `files/webdav/cloud/<slot>/backups/` 创建备份。本地存档快照在 `files/save-snapshots/profiles/<profile_id>/` 默认保留最近 5 个，启动前/干净退出后会自动创建，设置页可手动创建和恢复。
 
 ## 12. 维护提醒
@@ -765,7 +798,7 @@ adb shell run-as com.megacrit.sts2re ls files/.godot/mono/publish/arm64
 - Steam Cloud 的 DNS 预解析结果必须通过 `ServerRecord.createServer(host, port, WEB_SOCKET)` 分开传递地址和端口；禁止重新使用 JavaSteam 1.6.0 的 `createWebSocketServer(String)`，其冒号拆分会在 IPv6/NAT64 网络中把 `ff9b` 当成端口。`last-websocket-cm-endpoint.txt` 保留现有 `[IPv6]:port` / `IPv4:port` 格式，缓存与默认端点由 URI authority 解析后构造；不得改变服务器优先级或为此强制关闭 IPv6。回归：`SteamCloudEndpointTest`（IPv6 候选、缓存重载、IPv4 优先级及无端口 fallback）。
 - 多版本兼容包的长期方向是 manifest 化、可安装、可诊断，并作为启动配置属性选择；不要把某一游戏版本的兼容 patch 直接写死到 Android shell，也不要恢复全局兼容包 fallback 选择。
 - 已绑定兼容包的 manifest/target 存在但 DLL 或 overlay 缺失时，按缺失依赖走推荐 Sheet；复制前和 Godot 入口都须重新校验，不能用版本风险确认或 `launch_prepared=true` 绕过。兼容开关关闭的显式无兼容层路径保留。回归：`CompatLaunchReadinessTest`。
-- 对当前共享 `v0.113.x` target（稳定 id `v0.113.0`）改动时务必用历史 `ReferenceFlavor=original-v0.113.0` 与 `STS2_ORIGINAL_V1130_*` 指向最新 v0.113.1 原版引用，并保留 v0.113.0 编译/运行时验证；独立 v0.111.1 stable/public 与旧 v0.111.0 beta/public-beta 记录共用 `original-v0.111.0` / `STS2_ORIGINAL_V1110_*` 的现有 v0.111.0 引用和 `STS2_TARGET_1110`，不得为了 .1 新增 flavor/变量或合并两者 Steam 分支元数据；共享 v0.110.x / v0.109.x 分别用历史 flavor 和 v0.110.1 / v0.109.1 引用。默认验证路径是 `port-mod/tools/build-compat-matrix.sh` 的所有 active target compile gate。新版原生形状验证使用 `FramePreparation.Tests` 的 `-p:Sts2Target1130=true -p:TreasureHolderLayoutShape=true`，配合 `STS2_FRAME_REFERENCE_DLLS` 同时对 v0.113.0/v0.113.1 原版 DLL 做只读合约检查；普通旧形状也必须继续通过。
+- v0.114.0 用 `original-v0.114.0` / `STS2_ORIGINAL_V1140_*` 检查自己的原版引用，复用 `STS2_TARGET_1130`；保留 v0.113.x 的 `original-v0.113.0` / `STS2_ORIGINAL_V1130_*` 引用 v0.113.1，并保留 v0.113.0 编译/运行时验证。独立 v0.111.1 stable/public 与旧 v0.111.0 beta/public-beta 继续共用 `original-v0.111.0` / V1110 / `STS2_TARGET_1110`，不合并 Steam 分支元数据。默认验证路径是完整 active target matrix。新版原生形状验证使用 `FramePreparation.Tests` 的 `-p:Sts2Target1130=true -p:TreasureHolderLayoutShape=true`；`STS2_FRAME_REFERENCE_DLLS` 可同时配置 v0.113.0、v0.113.1 与 v0.114.0 原版 DLL 做只读合约检查；普通旧形状也必须继续通过。
 - 新增兼容 target 时需要同时增加：`.env.example` 中的 original reference 配置说明或 `ReferenceFlavor` 映射、`port-mod/targets/active/<target_id>/target.json`、必要的 target adapter/capability 或条件编译、文档版本矩阵、至少一次 importer APK 构建验证。只有需要保留 schema 1 旧发布包对照时，才额外新增/维护 `compat/*` legacy 分支、`compat_manifest.*.json` 与 `tools/android/bundled-compat-packs.json` 条目。
 - 性能维护：Workshop 搜索列表用 RecyclerView 回收卡片；图片按字节限制为 4–16 MiB LRU，最多 3 个加载任务，同 URL/尺寸合并并按目标尺寸采样，离屏取消、回收后阻止迟到结果。安装索引/目录扫描只在后台刷新 generation 快照；前置检查和详情操作仍后台检查真实文件，不能用 UI 缓存替代安全判断。`SteamWorkshopLibrary.recordInstall` 的内容 hash 不得放回索引锁内。
 - Workshop 图片取消必须使用 `Call.cancel()` + 图片线程池 `shutdown()`，不可用 `shutdownNow()` 中断 OkHttp 5.3.2 的 fast-fallback 建连等待。`SteamWorkshopDirectAccess` 用公开 `EventListener.canceled` + 每 Call 私有 tag 将取消传到当前内部请求，逐重定向 attach，并在成功返回后继续支持 body 取消；发布 child 后复查 parent cancellation，禁止在 listener factory 创建期间访问尚未初始化的 Call tags。保留配置的 listener、普通 IOException/连接超时的原域名回退及所有 Host/重定向协议；取消/中断不触发回退，兼容访问建连的原始 `InterruptedException` 恢复中断标记后转 `InterruptedIOException`。列表/查看器退出后不再重试或交付迟到图片。回归：`SteamWorkshopDirectAccessTest`、`WorkshopImageCancellationTest`，均沿用 `AndroidLinuxTestShadow`，避免 Robolectric 缓存的 Linux 对象污染全量环境/日志测试。

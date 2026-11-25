@@ -122,11 +122,11 @@ cp local.properties.example local.properties
 > **注意：** `.env` 文件中必须配置好 `JAVA_HOME`、`ANDROID_HOME`、`DOTNET_BIN`，以及用于编译兼容包的原版 PC DLL 引用路径 (`STS2_ORIGINAL_*_REFERENCE_DIR`)。
 
 ### 4. 同步运行时与依赖
-运行以下脚本，将大型的运行时产物（Godot模板、FMOD等）提取到指定位置（这些文件被 git ignore，需本地生成）：
+准备好本地参考输入后，运行以下脚本，将运行时产物同步到 Git 忽略的目录：
 ```bash
 tools/android/sync-runtime-from-references.sh
 ```
-Android FMOD 引擎与 Godot 原生桥需与 PC 本体的 2.03.06 配套：AAR 同级的 `arm64/` 应包含对应库；若路径不同，可在 `.env` 指定 `STS2_FMOD_ANDROID_LIBS_DIR`。脚本会拒绝旧版或混搭库，不会再次把旧参考库打进 APK。详见 [`doc/build/building-and-packaging.md`](doc/build/building-and-packaging.md)。
+脚本锁定的 FMOD 2.03.06 Android 原生库及 `fmod-release.aar` 来自 Utopia-rise 的 [6.1.0-4.5.0 预编译插件包](https://github.com/utopia-rise/fmod-gdextension/releases/download/6.1.0-4.5.0/addons.zip)。debug/release 输入路径、SHA-256 和 APK 不能替代参考输入的原因见 [FMOD Android 构建输入](doc/build/building-and-packaging.md#44-fmod-android-构建输入)。
 
 ### 5. 编译兼容包 (Compat Packs)
 将 full compatibility family 包和通用 offline bootstrap 一并构建并放入 Assets：
@@ -134,6 +134,8 @@ Android FMOD 引擎与 Godot 原生桥需与 PC 本体的 2.03.06 配套：AAR �
 tools/android/stage-bundled-compat-artifacts.sh
 ```
 现在默认会从单个 checkout 构建 schema 2 扁平化 full family 包，并同时构建最低优先级的通用离线保底包。离线包的 wildcard 只代表允许尽力尝试，不是任意未来版本的兼容保证；probe v2 只接管已理解的运行时 API 形状，在真实 ModelDb 初始化成功后才标记通过，并避免已知失败的相同 pack/version/payload SHA 组合再次自动选中。可单独运行 `offline-bootstrap/tools/test-offline-contract.sh`，验证合成 API 变更和本机已配置的所有原版引用。
+
+当前 Steam `public-beta` build `26909018` 的原版版本号是 **v0.114.0**，不是 v0.113.2。现有 full family 兼容包 `0.7.3-dev` 加入独立的 v0.114.0 target（共 11 个），按原版 DLL 匹配并复用 v0.113 的 Android 补丁。原有 v0.113.x 和正式版 v0.111.1 target 不变。
 
 当前启动配置没有可用兼容包时，点击启动不再只显示错误，而会打开推荐 Bottom Sheet：先推荐与当前本体匹配的内置或已安装 full target；只有没有 full target 命中时，才提供通用离线兜底。用户点“使用推荐并继续”后才会修改当前启动配置，也可以直接从面板进入兼容包管理。
 

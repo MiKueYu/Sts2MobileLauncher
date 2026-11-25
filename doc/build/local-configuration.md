@@ -35,7 +35,9 @@ cp local.properties.example local.properties
 | `STS2_ORIGINAL_V1100_ROOT` 或 `STS2_ORIGINAL_V1100_REFERENCE_DIR` | 共享 v0.110.x public-beta target 的 original compile gate；历史变量名，应指向 v0.110.1 引用。 |
 | `STS2_ORIGINAL_V1110_ROOT` 或 `STS2_ORIGINAL_V1110_REFERENCE_DIR` | v0.111.1 stable/public 与旧 v0.111.0 beta/public-beta 两个独立 metadata target 共用的 compile gate；保留现有 v0.111.0 引用、`original-v0.111.0` flavor 与 `STS2_TARGET_1110`，不新增 V1111 变量。 |
 | `STS2_ORIGINAL_V1130_ROOT` 或 `STS2_ORIGINAL_V1130_REFERENCE_DIR` | 共享 v0.113.x public-beta target 的 original compile gate；历史 V1130 名称保留，应指向最新 v0.113.1 引用。 |
+| `STS2_ORIGINAL_V1140_ROOT` 或 `STS2_ORIGINAL_V1140_REFERENCE_DIR` | 当前 v0.114.0 public-beta target 的独立 original compile gate；复用 `STS2_TARGET_1130` 的 Android 补丁路径。 |
 | `RELEASE_KEYSTORE_FILE` / `RELEASE_KEYSTORE_PASSWORD` / `RELEASE_KEYSTORE_ALIAS` | APK 签名参数；首次本地测试可用 Android debug keystore。已发布版本的更新必须沿用原私钥与证书，不可直接换 key 或重新生成同名 keystore。签名方案与覆盖安装校验见[构建文档 §3.1](building-and-packaging.md#31-apk-签名方案与更新身份)。 |
+| `COMPAT_RELEASE_SIGNING_KEY_FILE` / `COMPAT_RELEASE_SIGNING_KEY_ID` | 官方兼容包索引 Ed25519 私钥 PEM 的仓库外路径及 key id（默认 `sts2-compat-release-v1`）；与 APK 签名无关。只将 raw public key Base64 写入启动器。见[首次签名配置](building-and-packaging.md#61-本地签名与发布官方兼容包)。 |
 
 可选快捷项：
 
@@ -57,14 +59,19 @@ cp local.properties.example local.properties
 | `android.release_keystore_*` | debug keystore 兼容默认值 | 本地签名 fallback；更建议把密码类值放到 `.env` 或 CI secrets。 |
 | `runtime.mono_memory_stats_fix` | `0` | `1` 启用严格 SHA 限定的 Ekyso ARM64 Mono 内存总量查询实验修复；只改 staged 副本。环境变量 `MONO_MEMORY_STATS_FIX` 优先，仅允许 `0` / `1`。恢复 `0` 后重新打包会同步原始参考库，不改堆上限；范围与回滚见 [构建文档](building-and-packaging.md#41-实验性-mono-内存总量修复默认关闭)。 |
 | `runtime.fmod_android_libs_dir` | AAR 同级的 `arm64/` | 当 native 库与 AAR 分开放置时指定目录；环境变量 `STS2_FMOD_ANDROID_LIBS_DIR` 优先，要求经过校验的 2.03.06 三件套。 |
-| `compat.default_reference_flavor` | `original-v0.113.0` | 共享 v0.113.x public-beta fallback 的默认 compile gate，引用使用 v0.113.1；v0.111.1 / v0.111.0 共用 `original-v0.111.0`，旧 v0.110.x / v0.109.x flavor 仍可显式选择。 |
-| `compat.pack_build_mode` | `matrix` | `matrix` 使用 `port-mod/targets/active/*/target.json` 从单 checkout 构建 schema 2 family 包；`legacy` 使用多分支/worktree 构建 schema 1 包，仅用于回退诊断。 |
-| `compat.bundled_packs_config` | `tools/android/bundled-compat-packs.json` | 内置兼容包列表。 |
+| `compat.default_reference_flavor` | `original-v0.114.0` | 当前 public-beta fallback 使用 v0.114.0 原版引用；v0.113.x 的 `original-v0.113.0` 仍使用 v0.113.1，旧 flavor 可显式选择。 |
+| `compat.pack_build_mode` | `release` | 验签并原样内置官方 schema 2 ZIP；`matrix` 从当前 `port-mod` checkout 编译 active targets；`legacy` 为多分支 schema 1 回退诊断。环境变量：`COMPAT_PACK_BUILD_MODE`。 |
+| `compat.bundled_release_tag` | `tools/android/bundled-compat-release.json`（当前 `v0.8.0`） | `release` 模式选择固定已发布 tag；显式 `latest` 用 GitHub 稳定 Release 的签名索引解析。环境变量：`COMPAT_BUNDLED_RELEASE_TAG`。 |
+| `compat.bundled_release_dir` | 空 | 可选离线输入目录，必须含 ZIP、索引及签名，和在线输入走相同校验。指定后失败不回退。环境变量：`COMPAT_BUNDLED_RELEASE_DIR`。 |
+| `compat.bundled_packs_config` | `tools/android/bundled-compat-packs.json` | legacy 模式的内置包分支列表。 |
 | `compat.asset_dir` | `android/assets/compat_packs` | 内置兼容包输出到 APK assets 的目录；生成 zip 已 gitignore，不提交。 |
 | `compat.worktree_root` | `.agent/worktrees/compat-packs` | 多分支兼容包临时 worktree 根目录；位于 ignored `.agent/`。 |
 | `compat.pack_remote` | `origin` | stage 脚本解析远端分支时使用的 remote。 |
+| `compat.release_signing_key_file` / `compat.release_signing_key_id` | 空 / `sts2-compat-release-v1` | 可存仓库外 PEM 的路径及 key id，不能存私钥内容。对应 `COMPAT_RELEASE_SIGNING_KEY_*` 环境变量优先。 |
 | `deps.external_projects_config` | `tools/deps/external-github-projects.json` | GitHub 外部参考项目清单。 |
 | `deps.external_projects_root` | `.agent/reference-repos` | 自动 clone 外部参考项目的本地根目录；位于 ignored `.agent/`。 |
+
+这三个 bundling 环境变量的优先级为命令行环境 > `.env` > `local.properties` > 仓库默认值。`release` 模式需要 Python `cryptography`，固定 tag 的缓存位于 gitignored 的 `.agent/cache/compat-releases/<tag>/`，复用时重做签名和完整性检查。旧 `local.properties` 若仍指定 `matrix`，要构建发行 APK 时请删掉覆盖或切回 `release`。操作见[发布与打包 SOP](building-and-packaging.md#6-构建内置兼容包)。
 
 ## 4. 自动准备 GitHub 外部参考项目
 
@@ -112,6 +119,7 @@ STS2_ORIGINAL_V1061_REFERENCE_DIR=/path/to/s201061/.godot/mono/temp/bin/Debug
 # Separate v0.111.1/public and v0.111.0/public-beta targets reuse this existing v0.111.0 gate.
 STS2_ORIGINAL_V1110_REFERENCE_DIR=/path/to/v0.111.0/data_sts2_windows_x86_64
 STS2_ORIGINAL_V1130_REFERENCE_DIR=/path/to/v0.113.1/data_sts2_windows_x86_64
+STS2_ORIGINAL_V1140_REFERENCE_DIR=/path/to/v0.114.0/data_sts2_windows_x86_64
 ```
 
 `port-mod/refs/*/*.dll` symlink 不再是构建脚本所需输入；如需 standalone IDE 编译，可以在本地自行放置或用环境变量传 `CompatReferenceDir`，但不要提交游戏/运行时 DLL 或指向个人目录的 symlink。
@@ -138,8 +146,11 @@ tools/android/gradle-with-s2-env.sh :compileMonoDebugJavaWithJavac
 # 仅编译当前 compat fallback
 tools/android/build-port-mod.sh
 
-# 仅构建全部内置 compat pack
-tools/android/stage-bundled-compat-packs.sh
+# Stage 全部内置兼容包：官方 full family + 本地 offline bootstrap
+tools/android/stage-bundled-compat-artifacts.sh
+
+# 未发布的 port-mod 改动：仅重新编译并 stage 本地 full family
+COMPAT_PACK_BUILD_MODE=matrix tools/android/stage-bundled-compat-packs.sh
 ```
 
 ## 7. CI 建议

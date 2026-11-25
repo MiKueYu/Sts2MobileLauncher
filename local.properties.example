@@ -29,18 +29,27 @@ runtime.mono_memory_stats_fix=0
 # Defaults to arm64/ beside STS2_FMOD_PLUGIN_AAR; env override: STS2_FMOD_ANDROID_LIBS_DIR.
 # runtime.fmod_android_libs_dir=/path/to/fmod/android/arm64
 
-# Compatibility build defaults. Shared v0.113.x uses the v0.113.1 compile gate;
-# Older flavors, including v0.111.0 and shared v0.110.x / v0.109.x,
-# remain available for explicit older-target builds.
-compat.default_reference_flavor=original-v0.113.0
-# Use "matrix" for one schema-2 family pack. Set "legacy" only when you need
-# per-version branch packs for back-compat diagnostics.
-compat.pack_build_mode=matrix
+# Default fallback uses the current v0.114.0 public-beta reference. Older flavors
+# remain selectable, including original-v0.113.0 with the v0.113.1 reference.
+compat.default_reference_flavor=original-v0.114.0
+# "release" verifies and embeds the pinned official ZIP. Use "matrix" to test
+# local port-mod changes, or "legacy" for schema-1 branch diagnostics.
+compat.pack_build_mode=release
+# Optional tag override; leave unset to use tools/android/bundled-compat-release.json.
+# compat.bundled_release_tag=v0.8.0
+# Optional offline directory with the signed index, signature, and original ZIP.
+# compat.bundled_release_dir=/path/to/release-assets
 compat.bundled_packs_config=tools/android/bundled-compat-packs.json
 compat.asset_dir=android/assets/compat_packs
 compat.worktree_root=.agent/worktrees/compat-packs
 compat.pack_remote=origin
 compat.apply_build_info_patches=1
+
+# Optional path (not PEM contents) for compatibility GitHub Releases.
+# Keep the private key outside both Git checkouts.
+# Overrides: COMPAT_RELEASE_SIGNING_KEY_FILE / COMPAT_RELEASE_SIGNING_KEY_ID.
+# compat.release_signing_key_file=${HOME}/.config/sts2-re/compat-release-ed25519.pem
+# compat.release_signing_key_id=sts2-compat-release-v1
 
 # External GitHub reference project preparation.
 deps.external_projects_config=tools/deps/external-github-projects.json

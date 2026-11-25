@@ -31,7 +31,7 @@
 | Godot.NET.Sdk 4.5.1（仅原生回归） | `port-mod/tests/FramePreparation.Tests` 验证真实 ResourceLoader/节点生命周期；`port-mod/tests/BaseLibExtendedSave.Tests` 验证真实 BaseLib 扩展存档跨进程写入/读回；`port-mod/tests/SpineWarmup.Tests` 验证独立 Spine 预览的真实渲染与生命周期；均配合官方桌面 .NET 引擎，不改变发布 APK 的依赖。 | MIT；<https://github.com/godotengine/godot>。测试引擎下载与生成产物仅保留在 ignored 路径，不提交。 |
 | Spine Runtimes / spine-godot 4.2 | 独立 Spine 预览按公开原生 API 构造；`port-mod/tests/SpineWarmup.Tests` 另行使用官方 Godot 4.5.1 Linux GDExtension 与手写 skeleton/atlas、运行时生成纹理做真实渲染回归，不复制商业角色数据，也不新增 APK 依赖。 | [Spine Runtimes License Agreement](https://esotericsoftware.com/spine-runtimes-license)（2025-04-05）；[上游源码及许可](https://github.com/EsotericSoftware/spine-runtimes/tree/4.2)。不是 MIT：集成/分发须符合 Spine Editor License §2，或按 Runtime License 的另一条款由每名产品用户持有 Editor license，并随分发保留许可及版权；不能将可公开下载视为已获再分发授权。本次不提交原生库；已有 APK runtime 的 Spine 组件仍须按实际来源单独审计。 |
 | Material Symbols Rounded | `android/res/font/material_symbols_rounded.ttf` 作为离线生成输入；`tools/android/generate-material-symbol-vectors.py` 从字体导出 `android/res/drawable/ic_ms_*.xml` 官方轮廓 vector，Java 侧 `MaterialSymbols` 运行时加载这些 vector 统一启动器 MD3 图标。 | Google Fonts / Material Symbols，Apache-2.0；生成的 vector 资源仍按该来源审计。 |
-| FMOD Android engine + Godot plugin | 通过 `.env` 的 `STS2_FMOD_PLUGIN_AAR` 和同级 `arm64/`（或 `STS2_FMOD_ANDROID_LIBS_DIR`）同步与 PC 引擎版本一致的 2.03.06 FMOD core/Studio 和 Godot 原生桥到 gitignored 的 `android/libs/`，只在 APK 中打包；同步前检查三件套 SHA。 | FMOD 自身许可及 Godot 插件上游许可分别适用；本仓库不提交 AAR/原生库，正式分发前仍须确认再分发授权。 |
+| FMOD Android engine + Godot plugin | 来自 [Utopia-rise/fmod-gdextension 6.1.0-4.5.0](https://github.com/utopia-rise/fmod-gdextension/releases/tag/6.1.0-4.5.0) 的 `addons.zip`。构建时同步 FMOD 2.03.06 core/Studio、Godot 原生桥和插件 AAR 到 Git 忽略的 `android/libs/`，并校验原生三件套的 SHA-256；见 [FMOD Android 构建输入](doc/build/building-and-packaging.md#44-fmod-android-构建输入)。 | FMOD 自身许可及 Godot 插件上游许可分别适用；本仓库不提交 AAR/原生库，正式分发前仍须确认再分发授权。 |
 | .NET / Godot Mono runtime 与 crypto native jar | 通过 `.env` / `tools/android/sync-runtime-from-references.sh` 同步到 `android/assets/dotnet_bcl/` 等 gitignored 路径。 | .NET / Godot / 上游组件各自许可证；发布包前审计实际打入 APK 的文件。 |
 | Android compatibility pack zips | 构建时生成到 `android/assets/compat_packs/*.zip`，APK 打包阶段作为 assets 安装源。 | 生成产物不再由 git 跟踪；从 `port-mod` 分支源码重新构建。 |
 
@@ -54,12 +54,16 @@
 | Robolectric (`org.robolectric:robolectric:4.15.1`) | 启动器云同步决策、本地快照和 MOD 导入文件安全回归；仅测试使用，不打入 APK。 | MIT；<https://github.com/robolectric/robolectric> |
 | Android desugar_jdk_libs | 为 Android 7.x 等旧系统补齐 `java.time` 等 Java 8+ library API；随 APK 构建。 | GPL-2.0 with Classpath Exception |
 | JavaSteam (`in.dragonbra:javasteam`) | Steam 账号、CM、RemoteStorage 等协议支持。 | MIT |
-| Bouncy Castle (`bcprov-jdk18on`) | JavaSteam 加密支持。 | Bouncy Castle License / MIT-style |
+| Bouncy Castle (`bcprov-jdk18on`) | JavaSteam 加密及启动器官方兼容包 Ed25519 验签。 | Bouncy Castle License / MIT-style |
 | SLF4J NOP | 日志 facade no-op backend。 | MIT |
 | XZ for Java | Steam VZip/LZMA chunk 解压。 | Public Domain / 0BSD-style upstream notice |
 | zstd Android Prefab (`com.fpliu.ndk.pkg.prefab.android.21:zstd`) | Steam VZstd depot chunk JNI/native 解压。 | zstd upstream BSD-3-Clause / package metadata |
 | MTDataFilesProvider (`com.github.L-JINBIN:MTDataFilesProvider`) | debug/dev/release 文件访问 provider 依赖。 | 上游未检测到标准 license；发布前应单独确认。 |
 | libarchive-android `1.1.6` / libarchive | `ArchiveExtractor` 的非 ZIP 本体/MOD 归档读取；ZIP 仍走 Java 标准库路径。 | Android wrapper 以 Apache-2.0 发布；AAR 内置 libarchive 及其压缩组件，分别受 libarchive BSD-2-Clause/组件自带许可与 notices 约束（含 zlib、bzip2、XZ/liblzma、LZ4、zstd、Mbed TLS）；发布前审计实际 AAR 的完整 notices。 |
+
+## 兼容包构建工具依赖
+
+- [Python `cryptography`](https://github.com/pyca/cryptography)：本机发布脚本签名及 APK 内置官方 Release 的 Ed25519 验签，不打入 APK；[上游提供 Apache-2.0 或 BSD-3-Clause 双许可](https://github.com/pyca/cryptography/blob/main/LICENSE)。
 
 ## 可选参考 MOD / 排查仓库
 
@@ -74,7 +78,7 @@
 ## 发布前合规检查
 
 1. 确认 APK 不包含用户游戏 zip、解包后的商业 payload、original/reference DLL、keystore 或账号/token。
-2. 重新生成并审计 `android/assets/compat_packs/*.zip`，不要把 zip 产物加入 git。
+2. 验证 `android/assets/compat_packs/*.zip`；发行 APK 应原样内置验签通过的官方 full family，不重打已发布 ZIP。不要把 ZIP 产物加入 git。
 3. 对实际打入 APK 的 Godot/.NET/FMOD/native runtime 与 Gradle 依赖导出完整 license/notice 清单。
 4. 对 `SlayTheAmethystModded`、`WorkshopAndroidDownloader` 改编代码和无标准 license 的依赖保留授权依据或替换为自研/明确许可实现。
 5. README、`doc/` 与本文件需同步记录新增第三方来源。

@@ -38,6 +38,10 @@ This project is an experimental, unofficial Android port and launcher framework 
 
 The launcher follows Android’s language setting. Traditional Chinese is shared across Taiwan, Hong Kong and Macao; this does not change the language of the imported game.
 
+**Versions → Compatibility Packs → Online Updates** checks the project's [official compatibility releases](https://github.com/ModinMobileSTS/sts2-android-compat/releases) and lists signed versions you can install without updating the APK. When no installed full pack matches your game, the launch prompt can offer to download a verified official pack and continue. Checks never install updates on their own, and an older copy bundled with the APK cannot silently replace a newer installed pack. Online updates require a trusted release key in the APK and a signed release; local packs, ZIP import and the offline fallback still work without them.
+
+The first signed pack, [v0.8.0](https://github.com/ModinMobileSTS/sts2-android-compat/releases/tag/v0.8.0), is available for OTA testing. It requires a launcher build that trusts `sts2-compat-release-v1`; the pack release does not include a launcher APK.
+
 **The core architecture consists of three layers:**
 1. **Android Launcher Shell (`android/`):** Handles game data importing, Steam login and game downloading, Steam Workshop public browsing, direct ID/URL opening, and download tracking with default compatible-access routing for networks where Steam Community/API or SteamPipe CDN direct connections time out, local save snapshots, Steam Cloud/WebDAV save syncing, and local file/MOD management. Once everything is ready, it boots up the Godot game process.
 The launcher utility pages use a compact dark Material 3 shell, including toolbars, dialogs, and bottom sheets. File Browser provides clickable breadcrumbs, a clipboard banner, name/time/size sorting, add/import actions, and readable contextual multi-select controls. Logs provides source/date filtering and a **Package latest** action that shares the newest live `godot.log` and `sts2.log`, excluding archives. File multi-selection offers share/export; the line-numbered viewer switches between whole-file actions and copy/share/expand-range actions, with working wrap/horizontal-scroll modes, in-file search, and smooth pinch-to-resize text. The Workshop page is unchanged by this UI update.
@@ -151,30 +155,34 @@ cp local.properties.example local.properties
 > **Note:** The `.env` file must configure `JAVA_HOME`, `ANDROID_HOME`, `DOTNET_BIN`, and the original PC DLL reference paths used for compiling the compatibility pack (`STS2_ORIGINAL_*_REFERENCE_DIR`).
 
 ### 4. Sync Runtimes and Dependencies
-Run the following script to extract large runtime artifacts (Godot templates, FMOD, etc.) to their designated locations (these files are git-ignored and must be generated locally):
+After preparing the local reference inputs, run the following script to stage the runtime artifacts into git-ignored directories:
 ```bash
 tools/android/sync-runtime-from-references.sh
 ```
-The Android FMOD engine and Godot bridge must match the PC game's 2.03.06 release. Place the matched arm64 native libraries beside the AAR in `arm64/`, or set `STS2_FMOD_ANDROID_LIBS_DIR` in `.env`. Sync rejects older or mixed binaries instead of repackaging the old reference runtime. See [`doc/build/building-and-packaging.md`](doc/build/building-and-packaging.md).
+The pinned Android FMOD 2.03.06 libraries and `fmod-release.aar` come from Utopia-rise's [prebuilt 6.1.0-4.5.0 addon](https://github.com/utopia-rise/fmod-gdextension/releases/download/6.1.0-4.5.0/addons.zip). See [FMOD Android build inputs](doc/build/building-and-packaging.md#44-fmod-android-构建输入) for the debug/release layout, checksums, and why the APK cannot be used as the reference input.
 
-### 5. Compile Compatibility Packs (Compat Packs)
-Compile and stage all bundled compatibility artifacts into APK assets:
+### 5. Stage Compatibility Packs (Compat Packs)
+Stage both bundled compatibility artifacts into APK assets:
 ```bash
 tools/android/stage-bundled-compat-artifacts.sh
 ```
-This stages the flattened schema-2 full compatibility family pack from `port-mod/` (`compat_version=0.7.2-dev`, 10 metadata targets) and the generic `offline-bootstrap/` fallback pack.
+By default, the build verifies and embeds the original schema-2 ZIP from the [official v0.8.0 Release](https://github.com/ModinMobileSTS/sts2-android-compat/releases/tag/v0.8.0) (revision 800, 11 targets), plus the separately built `offline-bootstrap/` fallback pack. The official pack is available offline on first install. Its exact ZIP hash is recognized as installed in the online list.
+
+See the [release SOP](doc/build/building-and-packaging.md#6-构建内置兼容包) for choosing between an OTA-only compatibility release, a new APK with a pinned official release, and a local development build. Signing and build-time verification use [Python `cryptography`](https://github.com/pyca/cryptography); only publishing requires the Ed25519 private key. The APK bundler trusts the same public key as the launcher.
+
+The current **v0.114.0 public-beta** payload (Steam build `26909018`) gets its own target and original DLL reference in the existing family pack. It reuses the v0.113 patch implementation; the old v0.113.x target and stable v0.111.1 support are retained. The payload identifies this build as v0.114.0, not v0.113.2.
 
 The **v0.111.1 stable/public** target is separate from the retained **v0.111.0 beta/public-beta** target. Its original `sts2.dll` SHA-256 is `3fb1fa1bf0249087b706a5d0f062a60579e2f5b08df4ee477ddd6f2607f654d5`. Both reuse `original-v0.111.0`, the existing v0.111.0 `STS2_ORIGINAL_V1110_*` references and `STS2_TARGET_1110`; there is no new flavor or V1111 variable. The managed API/runtime IL and dependencies are equivalent, but separate target metadata keeps Workshop's `auto` branch fallback correct for archive imports: v0.111.1 uses `public`, while v0.111.0 keeps `public-beta`. This does not override a branch recorded by a Steam payload download. Desktop audit and native/headless ModelDb initialization are not Android UI/gameplay, ordinary MOD or LAN certification, and do not establish v0.111.0/v0.111.1 cross-version LAN support. For an optimized v0.111.1 body ZIP, use the matching v0.111.1 original ZIP and `s201111` project in the [body export example](doc/build/building-and-packaging.md#11-生成-android-优化本体-zip可选).
 
-The current `v0.113.x` public-beta variant supports **v0.113.0 and v0.113.1** under the stable target id `v0.113.0`, with both exact DLL hashes. It retains the v113 game-mode, merchant, treasure-layout and atlas-aware blur adaptations and the payload-owned transport handshake introduced in v0.111.0. v0.113.1 changes gameplay, saves and tooltip APIs without changing the contracts used by this variant; shared Android compatibility does not imply ordinary MOD API equivalence or cross-version LAN support. The historical `original-v0.113.0` / V1130 compile gate now uses v0.113.1 references. The older `v0.111.0` target remains available. The `v0.110.x` line keeps its shared target id for v0.110.0/v0.110.1; v0.109.0/v0.109.1 similarly share `v0.109.0`. A target may declare `sts2_dll_sha256` as a legacy string or a list of supported hashes.
+The retained `v0.113.x` public-beta variant supports **v0.113.0 and v0.113.1** under the stable target id `v0.113.0`, with both exact DLL hashes. It retains the v113 game-mode, merchant, treasure-layout and atlas-aware blur adaptations and the payload-owned transport handshake introduced in v0.111.0. v0.113.1 changes gameplay, saves and tooltip APIs without changing the contracts used by this variant; shared Android compatibility does not imply ordinary MOD API equivalence or cross-version LAN support. The historical `original-v0.113.0` / V1130 compile gate uses v0.113.1 references. The older `v0.111.0` target remains available. The `v0.110.x` line keeps its shared target id for v0.110.0/v0.110.1; v0.109.0/v0.109.1 similarly share `v0.109.0`. A target may declare `sts2_dll_sha256` as a legacy string or a list of supported hashes.
 
 The offline bootstrap is only auto-matched when no installed full pack matches the imported payload's SHA/version. Its wildcard is a best-effort fallback, not a compatibility guarantee: probe v2 accepts only understood runtime API shapes, marks success after real ModelDb initialization, and prevents a known-failed pack/version/payload-SHA tuple from being auto-selected again. Run `offline-bootstrap/tools/test-offline-contract.sh` to validate synthetic API changes and every locally configured original reference.
 
 If the current launch profile has no usable compatibility pack, launching now opens a recommendation bottom sheet instead of only showing an error. It first recommends the best matching bundled or installed full target; only when no full target matches does it offer the generic offline fallback. The profile is changed only after the user chooses **Use recommendation and continue**, and the sheet can instead open compatibility pack management directly.
 
-If you only need to rebuild the full `port-mod` family pack, use:
+To rebuild the full family from unpublished changes in your local `port-mod` checkout, explicitly select `matrix`:
 ```bash
-tools/android/stage-bundled-compat-packs.sh
+COMPAT_PACK_BUILD_MODE=matrix tools/android/stage-bundled-compat-packs.sh
 ```
 Legacy per-version branch packs remain available for diagnostics:
 ```bash
@@ -196,6 +204,7 @@ Run the build script. This will output an "Importer APK" that **DOES NOT** conta
 ```bash
 tools/package/build_importer_apk.sh
 ```
+The importer uses the signed, pinned official compatibility ZIP unless you opt into `COMPAT_PACK_BUILD_MODE=matrix` to test local compatibility changes.
 Upon successful build, the APK is output to `dist/sts2-re-importer.apk`. Release
 builds explicitly enable **v1/v2/v3** and disable v4; no `.idsig` is produced or
 required. Packaging verifies all three and, if a previous stable APK exists,
