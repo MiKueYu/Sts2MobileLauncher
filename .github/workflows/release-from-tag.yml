@@ -1,8 +1,8 @@
 name: Release from tag (prebuilt APK)
 
 # aly 服务器构建完成后 push tag 触发本工作流：
-# 从 release-assets 分支取预构建 APK，读取 annotated tag message 中的中文更新介绍
-# （以单独一行 ---- 结束），生成 Release 正文并发布。
+# 从 release-assets 分支取预构建 APK；通过 GitHub API 读取 annotated tag message
+# （中文更新介绍，以单独一行 ---- 结束），生成 Release 正文并发布。
 
 on:
   push:
@@ -36,27 +36,33 @@ jobs:
           fi
 
       - name: Generate Chinese release notes
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
           TAG="${GITHUB_REF_NAME}"
-          TAG_MSG="$(git tag -l "$TAG" --format='%(contents)' 2>/dev/null || true)"
+          TAG_SHA="$(git rev-parse "refs/tags/$TAG")"
+          echo "tag object sha: $TAG_SHA"
+          TAG_MSG="$(gh api "/repos/$GITHUB_REPOSITORY/git/tags/$TAG_SHA" --jq '.message' 2>/dev/null || true)"
+          echo '--- tag message ---'
+          printf '%s\n' "$TAG_MSG"
           INTRO="$(printf '%s' "$TAG_MSG" | sed '/^-----BEGIN PGP SIGNATURE/q')"
           INTRO="$(printf '%s' "$INTRO" | sed '/^----[[:space:]]*$/q' | sed '/^----[[:space:]]*$/d')"
           {
-            echo "## 更新内容"
-            echo ""
+            echo '## 更新内容'
+            echo ''
             if [ -n "$(printf '%s' "$INTRO" | tr -d '[:space:]')" ]; then
               printf '%s\n' "$INTRO"
             else
-              echo "- 同步上游更新并重新构建。"
+              echo '- 同步上游更新并重新构建。'
             fi
-            echo ""
-            echo "## 安装说明"
-            echo ""
-            echo "- 覆盖安装（同签名可直接更新）；首次使用请先在应用内导入自己拥有的 PC 版游戏文件。"
-            echo "- 本构建由服务器管道自动产出，APK 使用 v1+v2+v3 签名；SHA-256 见附件 SHA256SUMS。"
-            echo ""
-            echo "## 本构建包含的提交"
-            echo ""
+            echo ''
+            echo '## 安装说明'
+            echo ''
+            echo '- 覆盖安装（同签名可直接更新）；首次使用请先在应用内导入自己拥有的 PC 版游戏文件。'
+            echo '- 本构建由服务器管道自动产出，APK 使用 v1+v2+v3 签名；SHA-256 见附件 SHA256SUMS。'
+            echo ''
+            echo '## 本构建包含的提交'
+            echo ''
             git log --oneline -15 || true
           } > release-notes.md
           cat release-notes.md
