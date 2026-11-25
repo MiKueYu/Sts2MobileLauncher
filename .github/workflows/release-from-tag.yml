@@ -1,12 +1,9 @@
 name: Release from tag (prebuilt APK)
 
-# 服务器构建完成后 push tag 触发本工作流：
-# 把 tag 上附带的预构建 APK 元信息写入 GitHub Release，并将 APK 作为附件上传。
-# APK 本体通过 Actions artifact 回传：服务器在 tag message 中给出路径，本工作流
-# 不能直接访问服务器；因此采用双方案：
-#   A) 服务器同时把 APK push 到 fork 的 release-assets 分支（LFS 不需要，直接 blob）
-#   B) 本工作流从 release-assets 分支取 APK 创建 Release
-# 这样发布完全自动化且 runner 不需要构建环境。
+# 服务器（aly）构建完成后 push tag 触发本工作流：
+# 从 release-assets 分支取预构建 APK，生成中文更新说明并创建 GitHub Release。
+# 服务器在 tag message 里写中文更新介绍（多行，以单独一行 ---- 结束标记），
+# 本工作流读取 tag message 作为 Release 正文主体；没有介绍时回退为提交列表。
 
 on:
   push:
@@ -30,27 +27,36 @@ jobs:
         id: apk
         run: |
           TAG="${GITHUB_REF_NAME}"
-          if git fetch origin "release-assets:$T" 2>/dev/null; then :; fi
           git fetch origin release-assets --depth=1 || true
-          if git rev-parse --verify -q "FETCH_HEAD" >/dev/null && git cat-file -e "FETCH_HEAD:$TAG/sts2-re-importer-$TAG.apk" 2>/dev/null; then
+          if git rev-parse --verify -q FETCH_HEAD >/dev/null && git cat-file -e "FETCH_HEAD:$TAG/sts2-re-importer-$TAG.apk" 2>/dev/null; then
             git show "FETCH_HEAD:$TAG/sts2-re-importer-$TAG.apk" > "sts2-re-importer-$TAG.apk"
             echo "file=sts2-re-importer-$TAG.apk" >> "$GITHUB_OUTPUT"
-            echo "found=branch" >> "$GITHUB_OUTPUT"
           else
-            echo "found=missing" >> "$GITHUB_OUTPUT"
             echo "::warning::APK not found on release-assets branch for $TAG"
           fi
 
-      - name: Generate release notes
-        id: notes
+      - name: Generate Chinese release notes
         run: |
+          TAG="${GITHUB_REF_NAME}"
+          # tag message 正文（签名块之前）= 中文更新介绍；"----" 单独行之后为机器元数据
+          TAG_MSG="$(git tag -l "$TAG" --format='%(contents)')"
+          INTRO="$(printf '%s' "$TAG_MSG" | sed '/^-----BEGIN PGP SIGNATURE/q')"
+          INTRO="$(printf '%s' "$INTRO" | sed '/^----[[:space:]]*$/q' | sed '/^----[[:space:]]*$/d')"
           {
-            echo "## Automated build ${GITHUB_REF_NAME}"
+            echo "## 更新内容"
             echo ""
-            echo "- APK SHA-256: see asset checksum file"
-            echo "- Built by aly server pipeline; signed with local debug keystore (v1+v2+v3)"
+            if [ -n "$(printf '%s' "$INTRO" | tr -d '[:space:]')" ]; then
+              printf '%s\n' "$INTRO"
+            else
+              echo "- 同步上游更新并重新构建。"
+            fi
             echo ""
-            echo "### Commits in this build"
+            echo "## 安装说明"
+            echo ""
+            echo "- 覆盖安装（同签名可直接更新）；首次使用请先在应用内导入自己拥有的 PC 版游戏文件。"
+            echo "- 本构建由服务器管道自动产出，APK 使用 v1+v2+v3 签名；SHA-256 见附件 SHA256SUMS。"
+            echo ""
+            echo "## 本构建包含的提交"
             echo ""
             git log --oneline -15 || true
           } > release-notes.md
